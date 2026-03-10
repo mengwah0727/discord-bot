@@ -15,6 +15,7 @@ import {
 } from 'discord.js';
 
 const APPLE_GREEN = '#34C759';
+const UTC_PLUS_8_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const DB_PATH = path.join(DATA_DIR, 'db.json');
@@ -66,7 +67,6 @@ const client = new Client({
 const scheduleTimers = new Map();
 const weeklyTimers = new Map();
 const giveawayTimers = new Map();
-const tempVoiceDeleteTimers = new Map();
 
 const dayMap = {
   sunday: 0,
@@ -104,6 +104,18 @@ function parseTime(input) {
   return { hour, minute };
 }
 
+function normalizeMessage(text) {
+  return String(text).replace(/\\n/g, '\n');
+}
+
+function toUtc8Date(date = new Date()) {
+  return new Date(date.getTime() + UTC_PLUS_8_OFFSET_MS);
+}
+
+function fromUtc8ToUtc(dateUtc8) {
+  return new Date(dateUtc8.getTime() - UTC_PLUS_8_OFFSET_MS);
+}
+
 function getNextWeeklyRun(day, time) {
   const targetDay = dayMap[day];
   if (targetDay === undefined) return null;
@@ -111,28 +123,32 @@ function getNextWeeklyRun(day, time) {
   const parsed = parseTime(time);
   if (!parsed) return null;
 
-  const now = new Date();
-  const next = new Date(now);
+  const nowUtc8 = toUtc8Date(new Date());
 
-  next.setHours(parsed.hour, parsed.minute, 0, 0);
+  const currentDay = nowUtc8.getUTCDay();
+  const currentMinutes = nowUtc8.getUTCHours() * 60 + nowUtc8.getUTCMinutes();
+  const targetMinutes = parsed.hour * 60 + parsed.minute;
 
-  const currentDay = now.getDay();
   let diff = targetDay - currentDay;
-
   if (diff < 0) diff += 7;
-  if (diff === 0 && next <= now) diff = 7;
+  if (diff === 0 && targetMinutes <= currentMinutes) diff = 7;
 
-  next.setDate(now.getDate() + diff);
-  return next;
+  const nextUtc8 = new Date(nowUtc8);
+  nextUtc8.setUTCDate(nowUtc8.getUTCDate() + diff);
+  nextUtc8.setUTCHours(parsed.hour, parsed.minute, 0, 0);
+
+  return fromUtc8ToUtc(nextUtc8);
 }
 
 function pickRandom(arr, count) {
   const copy = [...arr];
   const result = [];
+
   while (copy.length && result.length < count) {
     const idx = Math.floor(Math.random() * copy.length);
     result.push(copy.splice(idx, 1)[0]);
   }
+
   return result;
 }
 
@@ -150,7 +166,7 @@ async function sendScheduledMessage(item) {
     const channel = await client.channels.fetch(item.channelId);
     if (!channel || !channel.isTextBased()) return;
 
-    await channel.send(item.message);
+    await channel.send(normalizeMessage(item.message));
 
     db.data.scheduledMessages = db.data.scheduledMessages.filter(x => x.id !== item.id);
     await saveDb();
@@ -176,7 +192,7 @@ async function sendWeeklyMessage(item) {
   try {
     const channel = await client.channels.fetch(item.channelId);
     if (channel && channel.isTextBased()) {
-      await channel.send(item.message);
+      await channel.send(normalizeMessage(item.message));
     }
   } catch (err) {
     console.error('发送每周公告失败:', err);
@@ -284,41 +300,25 @@ function scheduleGiveawayEnd(giveaway) {
   giveawayTimers.set(giveaway.id, timer);
 }
 
-function cancelTempVoiceDelete(channelId) {
-  if (tempVoiceDeleteTimers.has(channelId)) {
-    clearTimeout(tempVoiceDeleteTimers.get(channelId));
-    tempVoiceDeleteTimers.delete(channelId);
-  }
-}
+async function deleteTempVoiceChannelNow(channel) {
+  try {
+    const freshChannel = await client.channels.fetch(channel.id).catch(() => null);
 
-function scheduleTempVoiceDelete(channel) {
-  cancelTempVoiceDelete(channel.id);
-
-  const timer = setTimeout(async () => {
-    try {
-      const freshChannel = await client.channels.fetch(channel.id).catch(() => null);
-      if (!freshChannel || freshChannel.type !== ChannelType.GuildVoice) {
-        tempVoiceDeleteTimers.delete(channel.id);
-        return;
-      }
-
-      if (freshChannel.members.size > 0) {
-        tempVoiceDeleteTimers.delete(channel.id);
-        return;
-      }
-
-      await freshChannel.delete('临时语音频道无人 2 分钟自动删除');
-
+    if (!freshChannel || freshChannel.type !== ChannelType.GuildVoice) {
       db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channel.id);
       await saveDb();
-    } catch (error) {
-      console.error('删除临时语音频道失败:', error);
-    } finally {
-      tempVoiceDeleteTimers.delete(channel.id);
+      return;
     }
-  }, 2 * 60 * 1000);
 
-  tempVoiceDeleteTimers.set(channel.id, timer);
+    if (freshChannel.members.size > 0) return;
+
+    await freshChannel.delete('临时语音频道无人自动删除');
+
+    db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channel.id);
+    await saveDb();
+  } catch (error) {
+    console.error('删除临时语音频道失败:', error);
+  }
 }
 
 async function createTempVoiceChannelFor(member, joinChannel) {
@@ -373,7 +373,7 @@ client.once(Events.ClientReady, async readyClient => {
     }
 
     if (channel.members.size === 0) {
-      scheduleTempVoiceDelete(channel);
+      await deleteTempVoiceChannelNow(channel);
     }
   }
 
@@ -400,15 +400,8 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
       if (tracked) {
         const oldChannel = oldState.channel;
         if (oldChannel && oldChannel.members.size === 0) {
-          scheduleTempVoiceDelete(oldChannel);
+          await deleteTempVoiceChannelNow(oldChannel);
         }
-      }
-    }
-
-    if (newState.channelId) {
-      const tracked = db.data.tempVoiceChannels.find(x => x.channelId === newState.channelId);
-      if (tracked && newState.channel) {
-        cancelTempVoiceDelete(newState.channel.id);
       }
     }
   } catch (error) {
@@ -439,7 +432,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      await channel.send(text);
+      await channel.send(normalizeMessage(text));
       await interaction.reply({ content: '消息已发送。', ephemeral: true });
       return;
     }
@@ -530,7 +523,7 @@ client.on(Events.InteractionCreate, async interaction => {
       scheduleWeeklyJob(item);
 
       await interaction.reply({
-        content: `每周公告已创建。\nID：\`${item.id}\`\n频道：${channel}\n时间：**${day} ${time}**\n下次发送：<t:${Math.floor(nextRun.getTime() / 1000)}:F>`,
+        content: `每周公告已创建。\nID：\`${item.id}\`\n频道：${channel}\n时间：**${day} ${time} (GMT+8)**\n下次发送：<t:${Math.floor(nextRun.getTime() / 1000)}:F>`,
         ephemeral: true
       });
       return;
@@ -553,7 +546,7 @@ client.on(Events.InteractionCreate, async interaction => {
           ? `<t:${Math.floor(new Date(item.nextRunAt).getTime() / 1000)}:F>`
           : '未知';
 
-        return `ID：\`${item.id}\`\n频道：${channelMention}\n时间：**${item.day} ${item.time}**\n下次发送：${nextRunText}\n内容：${item.message}`;
+        return `ID：\`${item.id}\`\n频道：${channelMention}\n时间：**${item.day} ${item.time} (GMT+8)**\n下次发送：${nextRunText}\n内容：${normalizeMessage(item.message)}`;
       });
 
       await interaction.reply({
@@ -611,7 +604,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await saveDb();
 
       await interaction.reply({
-        content: `Join to Create 已开启。\n入口频道：${channel}\n用户进入这个频道后，bot 会自动创建临时语音频道。\n无人 2 分钟后自动删除。`,
+        content: `Join to Create 已开启。\n入口频道：${channel}\n用户进入这个频道后，bot 会自动创建临时语音频道。\n没人后会立即自动删除。`,
         ephemeral: true
       });
       return;
