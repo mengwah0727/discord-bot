@@ -332,24 +332,20 @@ async function endGiveaway(giveawayId, reroll = false, rerollCount = null) {
     giveaway.winnerIds = winners.map(w => w.id);
     await saveDb();
 
-    const winnerMentions = winners.length
-      ? winners.map(w => `<@${w.id}>`).join(', ')
-      : 'No valid participants';
-
-    const resultEmbed = new EmbedBuilder()
-      .setColor(APPLE_GREEN)
-      .setTitle(reroll ? '🎉 Giveaway Rerolled' : '🎉 Giveaway Ended')
-      .setDescription(
-        `${giveaway.prize}\n\n${giveaway.description ? `${normalizeMessage(giveaway.description)}\n\n` : ''}Winners: ${winnerMentions}\nEntries: ${participants.length}`
-      )
-      .setTimestamp();
-
     await message.edit({
       embeds: [buildGiveawayEmbed(giveaway, giveaway.createdBy, participants.length)],
       components: [giveawayButtonRow(giveaway.id, true)]
     });
 
-    await message.reply({ embeds: [resultEmbed] });
+    const winnerMentions = winners.length
+      ? winners.map(w => `<@${w.id}>`).join(', ')
+      : '没有有效参与者';
+
+    const resultText = reroll
+      ? `🎉 **抽奖重抽结果**\n奖品：**${giveaway.prize}**\n中奖者：${winnerMentions}\n参与人数：${participants.length}`
+      : `🎉 **抽奖结束**\n奖品：**${giveaway.prize}**\n中奖者：${winnerMentions}\n参与人数：${participants.length}`;
+
+    await message.reply({ content: resultText });
 
     for (const winner of winners) {
       try {
