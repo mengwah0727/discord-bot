@@ -31,7 +31,7 @@ const commands = [
     .addStringOption(option =>
       option
         .setName('delay')
-        .setDescription('多久后发送，例如 10m、2h、1d')
+        .setDescription('多久后发送，例如 10m、2h、1d、1d 2h 30m')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
@@ -109,8 +109,14 @@ const commands = [
     )
     .addStringOption(option =>
       option
+        .setName('description')
+        .setDescription('抽奖说明，例如活动内容、领奖方式、规则')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option
         .setName('duration')
-        .setDescription('持续时间，例如 30m、2h、1d')
+        .setDescription('持续时间，例如 1d 2h 50m、2h30m、45m')
         .setRequired(true)
     )
     .addIntegerOption(option =>

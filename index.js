@@ -79,17 +79,30 @@ const dayMap = {
 };
 
 function parseDuration(input) {
-  const match = input.match(/^(\d+)(m|h|d)$/i);
-  if (!match) return null;
+  if (!input) return null;
 
-  const value = Number(match[1]);
-  const unit = match[2].toLowerCase();
+  const text = input.trim().toLowerCase().replace(/\s+/g, '');
+  const regex = /(\d+)(d|day|days|h|hr|hrs|hour|hours|m|min|mins|minute|minutes)/g;
 
-  if (unit === 'm') return value * 60 * 1000;
-  if (unit === 'h') return value * 60 * 60 * 1000;
-  if (unit === 'd') return value * 24 * 60 * 60 * 1000;
+  let total = 0;
+  let matchFound = false;
 
-  return null;
+  for (const match of text.matchAll(regex)) {
+    matchFound = true;
+    const value = Number(match[1]);
+    const unit = match[2];
+
+    if (['d', 'day', 'days'].includes(unit)) {
+      total += value * 24 * 60 * 60 * 1000;
+    } else if (['h', 'hr', 'hrs', 'hour', 'hours'].includes(unit)) {
+      total += value * 60 * 60 * 1000;
+    } else if (['m', 'min', 'mins', 'minute', 'minutes'].includes(unit)) {
+      total += value * 60 * 1000;
+    }
+  }
+
+  if (!matchFound || total <= 0) return null;
+  return total;
 }
 
 function parseTime(input) {
@@ -261,11 +274,15 @@ async function endGiveaway(giveawayId, reroll = false, rerollCount = null) {
       ? winners.map(w => `<@${w.id}>`).join(', ')
       : '没有有效参与者';
 
+    const descriptionText = giveaway.description
+      ? `**说明：** ${giveaway.description}\n`
+      : '';
+
     const embed = new EmbedBuilder()
       .setColor(APPLE_GREEN)
       .setTitle(reroll ? '🎉 抽奖重抽结果' : '🎉 抽奖结束')
       .setDescription(
-        `奖品：**${giveaway.prize}**\n中奖者：${winnerMentions}\n参与人数：${participants.length}`
+        `${descriptionText}**奖品：** ${giveaway.prize}\n**中奖者：** ${winnerMentions}\n**参与人数：** ${participants.length}`
       )
       .setTimestamp();
 
@@ -451,7 +468,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (!duration) {
         await interaction.reply({
-          content: '时间格式错误，请使用 10m、2h、1d 这种格式。',
+          content: '时间格式错误，请使用 10m、2h、1d、1d 2h 30m 这种格式。',
           ephemeral: true
         });
         return;
@@ -624,6 +641,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.commandName === 'giveaway-start') {
       const channel = interaction.options.getChannel('channel', true);
       const prize = interaction.options.getString('prize', true);
+      const description = interaction.options.getString('description') || '';
       const durationText = interaction.options.getString('duration', true);
       const winnerCount = interaction.options.getInteger('winners', true);
 
@@ -636,7 +654,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (!duration) {
         await interaction.reply({
-          content: '时间格式错误，请使用 10m、2h、1d 这种格式。',
+          content: '时间格式错误，请使用 45m、2h、1d、1d 2h 50m、2h30m 这种格式。',
           ephemeral: true
         });
         return;
@@ -644,11 +662,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const endsAt = new Date(Date.now() + duration);
 
+      const descriptionBlock = description
+        ? `**说明：** ${normalizeMessage(description)}\n`
+        : '';
+
       const embed = new EmbedBuilder()
         .setColor(APPLE_GREEN)
         .setTitle('🎉 抽奖开始')
         .setDescription(
-          `奖品：**${prize}**\n中奖人数：**${winnerCount}**\n结束时间：<t:${Math.floor(
+          `${descriptionBlock}**奖品：** ${prize}\n**中奖人数：** ${winnerCount}\n**结束时间：** <t:${Math.floor(
             endsAt.getTime() / 1000
           )}:F>\n\n点击 🎉 参与抽奖！`
         )
@@ -663,6 +685,7 @@ client.on(Events.InteractionCreate, async interaction => {
         channelId: channel.id,
         messageId: giveawayMessage.id,
         prize,
+        description,
         winnerCount,
         createdBy: interaction.user.id,
         createdAt: new Date().toISOString(),
