@@ -11,7 +11,13 @@ import {
   Events,
   PermissionFlagsBits,
   EmbedBuilder,
-  ChannelType
+  ChannelType,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } from 'discord.js';
 
 const APPLE_GREEN = '#34C759';
@@ -113,7 +119,6 @@ function parseTime(input) {
   const minute = Number(match[2]);
 
   if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-
   return { hour, minute };
 }
 
@@ -168,6 +173,46 @@ function pickRandom(arr, count) {
 function sanitizeChannelName(name) {
   const cleaned = name.replace(/[\\/:*?"<>|#@]/g, '').trim();
   return cleaned || 'Temporary Room';
+}
+
+function formatRelativeEnds(date) {
+  return `<t:${Math.floor(date.getTime() / 1000)}:R> (<t:${Math.floor(date.getTime() / 1000)}:F>)`;
+}
+
+function giveawayButtonRow(giveawayId, ended = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`giveaway_join_${giveawayId}`)
+      .setLabel('Join Giveaway')
+      .setEmoji('🎉')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(ended)
+  );
+}
+
+function buildGiveawayEmbed(giveaway, hostUserId, entryCountOverride = null) {
+  const entryCount = entryCountOverride ?? (giveaway.entries?.length || 0);
+  const endsAt = new Date(giveaway.endsAt);
+
+  const parts = [
+    giveaway.prize,
+    ''
+  ];
+
+  if (giveaway.description?.trim()) {
+    parts.push(normalizeMessage(giveaway.description));
+    parts.push('');
+  }
+
+  parts.push(`Ends: ${formatRelativeEnds(endsAt)}`);
+  parts.push(`Hosted by: <@${hostUserId}>`);
+  parts.push(`Entries: ${entryCount}`);
+  parts.push(`Winners: ${giveaway.winnerCount}`);
+
+  return new EmbedBuilder()
+    .setColor(APPLE_GREEN)
+    .setDescription(parts.join('\n'))
+    .setTimestamp();
 }
 
 async function saveDb() {
@@ -232,21 +277,38 @@ function scheduleWeeklyJob(item) {
 }
 
 async function fetchGiveawayParticipants(giveaway) {
-  const channel = await client.channels.fetch(giveaway.channelId);
-  if (!channel || !channel.isTextBased()) return [];
+  const entryIds = giveaway.entries || [];
+  const users = [];
 
-  const message = await channel.messages.fetch(giveaway.messageId);
-  const reaction =
-    message.reactions.cache.get('🎉') ||
-    (await message.reactions.fetch('🎉').catch(() => null));
+  for (const id of entryIds) {
+    try {
+      const user = await client.users.fetch(id);
+      if (!user.bot) {
+        users.push({ id: user.id, username: user.username });
+      }
+    } catch {
+      // ignore invalid user
+    }
+  }
 
-  if (!reaction) return [];
+  return users;
+}
 
-  const users = await reaction.users.fetch();
-  return users.filter(user => !user.bot).map(user => ({
-    id: user.id,
-    username: user.username
-  }));
+async function refreshGiveawayMessage(giveaway) {
+  try {
+    const channel = await client.channels.fetch(giveaway.channelId);
+    if (!channel || !channel.isTextBased()) return;
+
+    const message = await channel.messages.fetch(giveaway.messageId);
+    const embed = buildGiveawayEmbed(giveaway, giveaway.createdBy, giveaway.entries?.length || 0);
+
+    await message.edit({
+      embeds: [embed],
+      components: [giveawayButtonRow(giveaway.id, giveaway.ended)]
+    });
+  } catch (error) {
+    console.error('更新抽奖消息失败:', error);
+  }
 }
 
 async function endGiveaway(giveawayId, reroll = false, rerollCount = null) {
@@ -272,21 +334,22 @@ async function endGiveaway(giveawayId, reroll = false, rerollCount = null) {
 
     const winnerMentions = winners.length
       ? winners.map(w => `<@${w.id}>`).join(', ')
-      : '没有有效参与者';
+      : 'No valid participants';
 
-    const descriptionText = giveaway.description
-      ? `**说明：** ${giveaway.description}\n`
-      : '';
-
-    const embed = new EmbedBuilder()
+    const resultEmbed = new EmbedBuilder()
       .setColor(APPLE_GREEN)
-      .setTitle(reroll ? '🎉 抽奖重抽结果' : '🎉 抽奖结束')
+      .setTitle(reroll ? '🎉 Giveaway Rerolled' : '🎉 Giveaway Ended')
       .setDescription(
-        `${descriptionText}**奖品：** ${giveaway.prize}\n**中奖者：** ${winnerMentions}\n**参与人数：** ${participants.length}`
+        `${giveaway.prize}\n\n${giveaway.description ? `${normalizeMessage(giveaway.description)}\n\n` : ''}Winners: ${winnerMentions}\nEntries: ${participants.length}`
       )
       .setTimestamp();
 
-    await message.reply({ embeds: [embed] });
+    await message.edit({
+      embeds: [buildGiveawayEmbed(giveaway, giveaway.createdBy, participants.length)],
+      components: [giveawayButtonRow(giveaway.id, true)]
+    });
+
+    await message.reply({ embeds: [resultEmbed] });
 
     for (const winner of winners) {
       try {
@@ -294,8 +357,8 @@ async function endGiveaway(giveawayId, reroll = false, rerollCount = null) {
         await user.send(
           `🎉 恭喜你中奖了！\n奖品：**${giveaway.prize}**\n抽奖链接：${message.url}`
         );
-      } catch (error) {
-        console.log(`无法私讯用户 ${winner.id}`);
+      } catch {
+        // ignore DM failure
       }
     }
 
@@ -427,234 +490,386 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
+  if (interaction.isChatInputCommand()) {
+    const hasPermission = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
-  const hasPermission = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
+    if (!hasPermission) {
+      await interaction.reply({
+        content: '你需要有 Manage Server 权限才可以使用这些指令。',
+        ephemeral: true
+      });
+      return;
+    }
 
-  if (!hasPermission) {
-    await interaction.reply({
-      content: '你需要有 Manage Server 权限才可以使用这些指令。',
-      ephemeral: true
-    });
+    try {
+      if (interaction.commandName === 'send') {
+        const channel = interaction.options.getChannel('channel', true);
+        const text = interaction.options.getString('message', true);
+
+        if (!channel.isTextBased()) {
+          await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
+          return;
+        }
+
+        await channel.send(normalizeMessage(text));
+        await interaction.reply({ content: '消息已发送。', ephemeral: true });
+        return;
+      }
+
+      if (interaction.commandName === 'schedule') {
+        const channel = interaction.options.getChannel('channel', true);
+        const text = interaction.options.getString('message', true);
+        const delayText = interaction.options.getString('delay', true);
+
+        if (!channel.isTextBased()) {
+          await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
+          return;
+        }
+
+        const duration = parseDuration(delayText);
+
+        if (!duration) {
+          await interaction.reply({
+            content: '时间格式错误，请使用 10m、2h、1d、1d2h30m 这种格式。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const item = {
+          id: crypto.randomUUID(),
+          guildId: interaction.guildId,
+          channelId: channel.id,
+          message: text,
+          sendAt: new Date(Date.now() + duration).toISOString(),
+          createdBy: interaction.user.id,
+          createdAt: new Date().toISOString()
+        };
+
+        db.data.scheduledMessages.push(item);
+        await saveDb();
+        scheduleMessageJob(item);
+
+        await interaction.reply({
+          content: `已设置一次性定时消息，将在 **${delayText}** 后发送。`,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'schedule-weekly') {
+        const channel = interaction.options.getChannel('channel', true);
+        const day = interaction.options.getString('day', true);
+        const time = interaction.options.getString('time', true);
+        const text = interaction.options.getString('message', true);
+
+        if (!channel.isTextBased()) {
+          await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
+          return;
+        }
+
+        if (!parseTime(time)) {
+          await interaction.reply({
+            content: '时间格式错误，请使用 24 小时制，例如 20:30',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const nextRun = getNextWeeklyRun(day, time);
+        if (!nextRun) {
+          await interaction.reply({
+            content: '星期或时间格式错误。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const item = {
+          id: crypto.randomUUID(),
+          guildId: interaction.guildId,
+          channelId: channel.id,
+          day,
+          time,
+          message: text,
+          createdBy: interaction.user.id,
+          createdAt: new Date().toISOString(),
+          nextRunAt: nextRun.toISOString()
+        };
+
+        db.data.weeklySchedules.push(item);
+        await saveDb();
+        scheduleWeeklyJob(item);
+
+        await interaction.reply({
+          content: `每周公告已创建。\nID：\`${item.id}\`\n频道：${channel}\n时间：**${day} ${time} (GMT+8)**\n下次发送：<t:${Math.floor(nextRun.getTime() / 1000)}:F>`,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'schedule-list') {
+        const items = db.data.weeklySchedules.filter(x => x.guildId === interaction.guildId);
+
+        if (!items.length) {
+          await interaction.reply({
+            content: '目前没有固定公告。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const lines = items.map(item => {
+          const channelMention = `<#${item.channelId}>`;
+          const nextRunText = item.nextRunAt
+            ? `<t:${Math.floor(new Date(item.nextRunAt).getTime() / 1000)}:F>`
+            : '未知';
+
+          return `ID：\`${item.id}\`\n频道：${channelMention}\n时间：**${item.day} ${item.time} (GMT+8)**\n下次发送：${nextRunText}\n内容：${normalizeMessage(item.message)}`;
+        });
+
+        await interaction.reply({
+          content: lines.join('\n\n-------------------\n\n').slice(0, 1900),
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'schedule-delete') {
+        const id = interaction.options.getString('id', true);
+        const item = db.data.weeklySchedules.find(
+          x => x.id === id && x.guildId === interaction.guildId
+        );
+
+        if (!item) {
+          await interaction.reply({
+            content: '找不到这个固定公告 ID。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        db.data.weeklySchedules = db.data.weeklySchedules.filter(x => x.id !== id);
+        await saveDb();
+
+        if (weeklyTimers.has(id)) {
+          clearTimeout(weeklyTimers.get(id));
+          weeklyTimers.delete(id);
+        }
+
+        await interaction.reply({
+          content: `已删除固定公告：\`${id}\``,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'tempvoice-set') {
+        const channel = interaction.options.getChannel('channel', true);
+
+        if (channel.type !== ChannelType.GuildVoice) {
+          await interaction.reply({
+            content: '请选择一个语音频道。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        db.data.tempVoiceConfig[interaction.guildId] = {
+          joinChannelId: channel.id,
+          updatedAt: new Date().toISOString(),
+          updatedBy: interaction.user.id
+        };
+        await saveDb();
+
+        await interaction.reply({
+          content: `Join to Create 已开启。\n入口频道：${channel}\n用户进入这个频道后，bot 会自动创建临时语音频道。\n没人后会立即自动删除。`,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'tempvoice-disable') {
+        delete db.data.tempVoiceConfig[interaction.guildId];
+        await saveDb();
+
+        await interaction.reply({
+          content: 'Join to Create 已关闭。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'giveaway-start') {
+        const channel = interaction.options.getChannel('channel', true);
+
+        if (!channel.isTextBased()) {
+          await interaction.reply({
+            content: '请选择文字频道。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const modal = new ModalBuilder()
+          .setCustomId(`giveaway_create_${channel.id}`)
+          .setTitle('Create a Giveaway');
+
+        const durationInput = new TextInputBuilder()
+          .setCustomId('duration')
+          .setLabel('Duration')
+          .setPlaceholder('Ex: 1d 2h 50m')
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short);
+
+        const winnersInput = new TextInputBuilder()
+          .setCustomId('winners')
+          .setLabel('Number of Winners')
+          .setPlaceholder('1')
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short);
+
+        const prizeInput = new TextInputBuilder()
+          .setCustomId('prize')
+          .setLabel('Prize')
+          .setPlaceholder('Steam Gift Card')
+          .setRequired(true)
+          .setStyle(TextInputStyle.Short);
+
+        const descriptionInput = new TextInputBuilder()
+          .setCustomId('description')
+          .setLabel('Description')
+          .setPlaceholder('参加方式、领奖方式、规则...')
+          .setRequired(false)
+          .setStyle(TextInputStyle.Paragraph);
+
+        modal.addComponents(
+          new ActionRowBuilder().addComponents(durationInput),
+          new ActionRowBuilder().addComponents(winnersInput),
+          new ActionRowBuilder().addComponents(prizeInput),
+          new ActionRowBuilder().addComponents(descriptionInput)
+        );
+
+        await interaction.showModal(modal);
+        return;
+      }
+
+      if (interaction.commandName === 'giveaway-end') {
+        const messageId = interaction.options.getString('message_id', true);
+        const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
+
+        if (!giveaway) {
+          await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
+          return;
+        }
+
+        if (giveawayTimers.has(giveaway.id)) {
+          clearTimeout(giveawayTimers.get(giveaway.id));
+          giveawayTimers.delete(giveaway.id);
+        }
+
+        await endGiveaway(giveaway.id);
+        await interaction.reply({ content: '抽奖已手动结束。', ephemeral: true });
+        return;
+      }
+
+      if (interaction.commandName === 'giveaway-reroll') {
+        const messageId = interaction.options.getString('message_id', true);
+        const rerollCount = interaction.options.getInteger('winners') || 1;
+        const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
+
+        if (!giveaway) {
+          await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
+          return;
+        }
+
+        giveaway.ended = false;
+        await saveDb();
+        await endGiveaway(giveaway.id, true, rerollCount);
+
+        await interaction.reply({
+          content: `已重抽 ${rerollCount} 位中奖者。`,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'giveaway-participants') {
+        const messageId = interaction.options.getString('message_id', true);
+        const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
+
+        if (!giveaway) {
+          await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
+          return;
+        }
+
+        const participants = await fetchGiveawayParticipants(giveaway);
+
+        if (!participants.length) {
+          await interaction.reply({
+            content: '目前还没有参与者。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const list = participants.slice(0, 50).map(p => `<@${p.id}>`).join('\n');
+
+        await interaction.reply({
+          content: `参与人数：**${participants.length}**\n${list}`,
+          ephemeral: true
+        });
+      }
+    } catch (error) {
+      console.error(error);
+
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: '发生错误，请查看终端窗口。',
+          ephemeral: true
+        }).catch(() => {});
+      } else {
+        await interaction.reply({
+          content: '发生错误，请查看终端窗口。',
+          ephemeral: true
+        }).catch(() => {});
+      }
+    }
+
     return;
   }
 
-  try {
-    if (interaction.commandName === 'send') {
-      const channel = interaction.options.getChannel('channel', true);
-      const text = interaction.options.getString('message', true);
-
-      if (!channel.isTextBased()) {
-        await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
-        return;
-      }
-
-      await channel.send(normalizeMessage(text));
-      await interaction.reply({ content: '消息已发送。', ephemeral: true });
-      return;
-    }
-
-    if (interaction.commandName === 'schedule') {
-      const channel = interaction.options.getChannel('channel', true);
-      const text = interaction.options.getString('message', true);
-      const delayText = interaction.options.getString('delay', true);
-
-      if (!channel.isTextBased()) {
-        await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
-        return;
-      }
-
-      const duration = parseDuration(delayText);
-
-      if (!duration) {
-        await interaction.reply({
-          content: '时间格式错误，请使用 10m、2h、1d、1d 2h 30m 这种格式。',
-          ephemeral: true
-        });
-        return;
-      }
-
-      const item = {
-        id: crypto.randomUUID(),
-        guildId: interaction.guildId,
-        channelId: channel.id,
-        message: text,
-        sendAt: new Date(Date.now() + duration).toISOString(),
-        createdBy: interaction.user.id,
-        createdAt: new Date().toISOString()
-      };
-
-      db.data.scheduledMessages.push(item);
-      await saveDb();
-      scheduleMessageJob(item);
-
-      await interaction.reply({
-        content: `已设置一次性定时消息，将在 **${delayText}** 后发送。`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'schedule-weekly') {
-      const channel = interaction.options.getChannel('channel', true);
-      const day = interaction.options.getString('day', true);
-      const time = interaction.options.getString('time', true);
-      const text = interaction.options.getString('message', true);
-
-      if (!channel.isTextBased()) {
-        await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
-        return;
-      }
-
-      if (!parseTime(time)) {
-        await interaction.reply({
-          content: '时间格式错误，请使用 24 小时制，例如 20:30',
-          ephemeral: true
-        });
-        return;
-      }
-
-      const nextRun = getNextWeeklyRun(day, time);
-      if (!nextRun) {
-        await interaction.reply({
-          content: '星期或时间格式错误。',
-          ephemeral: true
-        });
-        return;
-      }
-
-      const item = {
-        id: crypto.randomUUID(),
-        guildId: interaction.guildId,
-        channelId: channel.id,
-        day,
-        time,
-        message: text,
-        createdBy: interaction.user.id,
-        createdAt: new Date().toISOString(),
-        nextRunAt: nextRun.toISOString()
-      };
-
-      db.data.weeklySchedules.push(item);
-      await saveDb();
-      scheduleWeeklyJob(item);
-
-      await interaction.reply({
-        content: `每周公告已创建。\nID：\`${item.id}\`\n频道：${channel}\n时间：**${day} ${time} (GMT+8)**\n下次发送：<t:${Math.floor(nextRun.getTime() / 1000)}:F>`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'schedule-list') {
-      const items = db.data.weeklySchedules.filter(x => x.guildId === interaction.guildId);
-
-      if (!items.length) {
-        await interaction.reply({
-          content: '目前没有固定公告。',
-          ephemeral: true
-        });
-        return;
-      }
-
-      const lines = items.map(item => {
-        const channelMention = `<#${item.channelId}>`;
-        const nextRunText = item.nextRunAt
-          ? `<t:${Math.floor(new Date(item.nextRunAt).getTime() / 1000)}:F>`
-          : '未知';
-
-        return `ID：\`${item.id}\`\n频道：${channelMention}\n时间：**${item.day} ${item.time} (GMT+8)**\n下次发送：${nextRunText}\n内容：${normalizeMessage(item.message)}`;
-      });
-
-      await interaction.reply({
-        content: lines.join('\n\n-------------------\n\n').slice(0, 1900),
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'schedule-delete') {
-      const id = interaction.options.getString('id', true);
-      const item = db.data.weeklySchedules.find(
-        x => x.id === id && x.guildId === interaction.guildId
-      );
-
-      if (!item) {
-        await interaction.reply({
-          content: '找不到这个固定公告 ID。',
-          ephemeral: true
-        });
-        return;
-      }
-
-      db.data.weeklySchedules = db.data.weeklySchedules.filter(x => x.id !== id);
-      await saveDb();
-
-      if (weeklyTimers.has(id)) {
-        clearTimeout(weeklyTimers.get(id));
-        weeklyTimers.delete(id);
-      }
-
-      await interaction.reply({
-        content: `已删除固定公告：\`${id}\``,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'tempvoice-set') {
-      const channel = interaction.options.getChannel('channel', true);
-
-      if (channel.type !== ChannelType.GuildVoice) {
-        await interaction.reply({
-          content: '请选择一个语音频道。',
-          ephemeral: true
-        });
-        return;
-      }
-
-      db.data.tempVoiceConfig[interaction.guildId] = {
-        joinChannelId: channel.id,
-        updatedAt: new Date().toISOString(),
-        updatedBy: interaction.user.id
-      };
-      await saveDb();
-
-      await interaction.reply({
-        content: `Join to Create 已开启。\n入口频道：${channel}\n用户进入这个频道后，bot 会自动创建临时语音频道。\n没人后会立即自动删除。`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'tempvoice-disable') {
-      delete db.data.tempVoiceConfig[interaction.guildId];
-      await saveDb();
-
-      await interaction.reply({
-        content: 'Join to Create 已关闭。',
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'giveaway-start') {
-      const channel = interaction.options.getChannel('channel', true);
-      const prize = interaction.options.getString('prize', true);
-      const description = interaction.options.getString('description') || '';
-      const durationText = interaction.options.getString('duration', true);
-      const winnerCount = interaction.options.getInteger('winners', true);
-
-      if (!channel.isTextBased()) {
-        await interaction.reply({ content: '请选择文字频道。', ephemeral: true });
-        return;
-      }
+  if (interaction.isModalSubmit()) {
+    if (interaction.customId.startsWith('giveaway_create_')) {
+      const channelId = interaction.customId.replace('giveaway_create_', '');
+      const durationText = interaction.fields.getTextInputValue('duration');
+      const winnersText = interaction.fields.getTextInputValue('winners');
+      const prize = interaction.fields.getTextInputValue('prize');
+      const description = interaction.fields.getTextInputValue('description') || '';
 
       const duration = parseDuration(durationText);
+      const winnerCount = Number(winnersText);
 
       if (!duration) {
         await interaction.reply({
-          content: '时间格式错误，请使用 45m、2h、1d、1d 2h 50m、2h30m 这种格式。',
+          content: '时间格式错误，请使用 45m、2h、1d、1d2h50m 这种格式。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (!Number.isInteger(winnerCount) || winnerCount <= 0) {
+        await interaction.reply({
+          content: '中奖人数必须是大于 0 的整数。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      const channel = await client.channels.fetch(channelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        await interaction.reply({
+          content: '找不到这个频道。',
           ephemeral: true
         });
         return;
@@ -662,31 +877,15 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const endsAt = new Date(Date.now() + duration);
 
-      const descriptionBlock = description
-        ? `**说明：** ${normalizeMessage(description)}\n`
-        : '';
-
-      const embed = new EmbedBuilder()
-        .setColor(APPLE_GREEN)
-        .setTitle('🎉 抽奖开始')
-        .setDescription(
-          `${descriptionBlock}**奖品：** ${prize}\n**中奖人数：** ${winnerCount}\n**结束时间：** <t:${Math.floor(
-            endsAt.getTime() / 1000
-          )}:F>\n\n点击 🎉 参与抽奖！`
-        )
-        .setTimestamp();
-
-      const giveawayMessage = await channel.send({ embeds: [embed] });
-      await giveawayMessage.react('🎉');
-
       const giveaway = {
         id: crypto.randomUUID(),
         guildId: interaction.guildId,
         channelId: channel.id,
-        messageId: giveawayMessage.id,
+        messageId: '',
         prize,
         description,
         winnerCount,
+        entries: [],
         createdBy: interaction.user.id,
         createdAt: new Date().toISOString(),
         endsAt: endsAt.toISOString(),
@@ -695,96 +894,67 @@ client.on(Events.InteractionCreate, async interaction => {
         participantCount: 0
       };
 
+      const embed = buildGiveawayEmbed(giveaway, interaction.user.id, 0);
+      const sentMessage = await channel.send({
+        embeds: [embed],
+        components: [giveawayButtonRow(giveaway.id, false)]
+      });
+
+      giveaway.messageId = sentMessage.id;
       db.data.giveaways.push(giveaway);
       await saveDb();
       scheduleGiveawayEnd(giveaway);
 
       await interaction.reply({
-        content: `抽奖已开始，消息 ID：\`${giveawayMessage.id}\``,
+        content: `抽奖已开始，消息 ID：\`${sentMessage.id}\``,
         ephemeral: true
       });
+
       return;
     }
+  }
 
-    if (interaction.commandName === 'giveaway-end') {
-      const messageId = interaction.options.getString('message_id', true);
-      const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
-
-      if (!giveaway) {
-        await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
-        return;
-      }
-
-      if (giveawayTimers.has(giveaway.id)) {
-        clearTimeout(giveawayTimers.get(giveaway.id));
-        giveawayTimers.delete(giveaway.id);
-      }
-
-      await endGiveaway(giveaway.id);
-      await interaction.reply({ content: '抽奖已手动结束。', ephemeral: true });
-      return;
-    }
-
-    if (interaction.commandName === 'giveaway-reroll') {
-      const messageId = interaction.options.getString('message_id', true);
-      const rerollCount = interaction.options.getInteger('winners') || 1;
-      const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
+  if (interaction.isButton()) {
+    if (interaction.customId.startsWith('giveaway_join_')) {
+      const giveawayId = interaction.customId.replace('giveaway_join_', '');
+      const giveaway = db.data.giveaways.find(g => g.id === giveawayId);
 
       if (!giveaway) {
-        await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
-        return;
-      }
-
-      giveaway.ended = false;
-      await saveDb();
-      await endGiveaway(giveaway.id, true, rerollCount);
-
-      await interaction.reply({
-        content: `已重抽 ${rerollCount} 位中奖者。`,
-        ephemeral: true
-      });
-      return;
-    }
-
-    if (interaction.commandName === 'giveaway-participants') {
-      const messageId = interaction.options.getString('message_id', true);
-      const giveaway = db.data.giveaways.find(g => g.messageId === messageId);
-
-      if (!giveaway) {
-        await interaction.reply({ content: '找不到这个抽奖。', ephemeral: true });
-        return;
-      }
-
-      const participants = await fetchGiveawayParticipants(giveaway);
-
-      if (!participants.length) {
         await interaction.reply({
-          content: '目前还没有参与者。',
+          content: '找不到这个抽奖。',
           ephemeral: true
         });
         return;
       }
 
-      const list = participants.slice(0, 50).map(p => `<@${p.id}>`).join('\n');
+      if (giveaway.ended) {
+        await interaction.reply({
+          content: '这个抽奖已经结束了。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      giveaway.entries ||= [];
+
+      if (giveaway.entries.includes(interaction.user.id)) {
+        await interaction.reply({
+          content: '你已经参加过这个抽奖了。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      giveaway.entries.push(interaction.user.id);
+      await saveDb();
+      await refreshGiveawayMessage(giveaway);
 
       await interaction.reply({
-        content: `参与人数：**${participants.length}**\n${list}`,
+        content: '你已经成功参加抽奖。',
         ephemeral: true
       });
-    }
-  } catch (error) {
-    console.error(error);
 
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: '发生错误，请查看终端窗口。',
-        ephemeral: true
-      }).catch(() => {});
-    } else {
-      await interaction.reply({
-        content: '发生错误，请查看终端窗口。',
-        ephemeral: true
-      }).catch(() => {});
+      return;
     }
   }
 });
