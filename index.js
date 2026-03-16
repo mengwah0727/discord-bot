@@ -35,6 +35,7 @@ const db = new Low(adapter, {
   scheduledMessages: [],
   weeklySchedules: [],
   giveaways: [],
+  teamPosts: [],
   tempVoiceConfig: {},
   tempVoiceChannels: []
 });
@@ -46,6 +47,7 @@ if (!db.data) {
     scheduledMessages: [],
     weeklySchedules: [],
     giveaways: [],
+    teamPosts: [],
     tempVoiceConfig: {},
     tempVoiceChannels: []
   };
@@ -53,6 +55,7 @@ if (!db.data) {
   db.data.scheduledMessages ||= [];
   db.data.weeklySchedules ||= [];
   db.data.giveaways ||= [];
+  db.data.teamPosts ||= [];
   db.data.tempVoiceConfig ||= {};
   db.data.tempVoiceChannels ||= [];
 }
@@ -215,6 +218,53 @@ function buildGiveawayEmbed(giveaway, hostUserId, entryCountOverride = null) {
     .setTimestamp();
 }
 
+function teamButtonRow(teamId, closed = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`team_join_${teamId}`)
+      .setLabel('Join')
+      .setEmoji('✅')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(closed),
+    new ButtonBuilder()
+      .setCustomId(`team_leave_${teamId}`)
+      .setLabel('Leave')
+      .setEmoji('❌')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(closed)
+  );
+}
+
+function buildTeamEmbed(team) {
+  const players = team.players || [];
+  const lines = [
+    `**人数：** ${players.length}/${team.maxPlayers}`,
+    ''
+  ];
+
+  if (team.description?.trim()) {
+    lines.push(normalizeMessage(team.description));
+    lines.push('');
+  }
+
+  if (players.length) {
+    lines.push('**参与名单：**');
+    players.forEach((id, index) => {
+      lines.push(`${index + 1}. <@${id}>`);
+    });
+  } else {
+    lines.push('**参与名单：**');
+    lines.push('目前还没有人参加');
+  }
+
+  return new EmbedBuilder()
+    .setColor(APPLE_GREEN)
+    .setTitle(team.title)
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: team.closed ? '报名已关闭' : '点击按钮参加或退出' })
+    .setTimestamp();
+}
+
 async function saveDb() {
   await db.write();
 }
@@ -374,6 +424,21 @@ function scheduleGiveawayEnd(giveaway) {
 
   const timer = setTimeout(() => endGiveaway(giveaway.id), delay);
   giveawayTimers.set(giveaway.id, timer);
+}
+
+async function refreshTeamMessage(team) {
+  try {
+    const channel = await client.channels.fetch(team.channelId);
+    if (!channel || !channel.isTextBased()) return;
+
+    const message = await channel.messages.fetch(team.messageId);
+    await message.edit({
+      embeds: [buildTeamEmbed(team)],
+      components: [teamButtonRow(team.id, team.closed)]
+    });
+  } catch (error) {
+    console.error('更新组队消息失败:', error);
+  }
 }
 
 async function deleteTempVoiceChannelNow(channel) {
@@ -815,6 +880,105 @@ client.on(Events.InteractionCreate, async interaction => {
           content: `参与人数：**${participants.length}**\n${list}`,
           ephemeral: true
         });
+        return;
+      }
+
+      if (interaction.commandName === 'team-create') {
+        const channel = interaction.options.getChannel('channel', true);
+        const title = interaction.options.getString('title', true);
+        const description = interaction.options.getString('description') || '';
+        const maxPlayers = interaction.options.getInteger('max_players', true);
+
+        if (!channel.isTextBased()) {
+          await interaction.reply({
+            content: '请选择文字频道。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const team = {
+          id: crypto.randomUUID(),
+          guildId: interaction.guildId,
+          channelId: channel.id,
+          messageId: '',
+          title,
+          description,
+          maxPlayers,
+          players: [],
+          closed: false,
+          createdBy: interaction.user.id,
+          createdAt: new Date().toISOString()
+        };
+
+        const sentMessage = await channel.send({
+          embeds: [buildTeamEmbed(team)],
+          components: [teamButtonRow(team.id, false)]
+        });
+
+        team.messageId = sentMessage.id;
+        db.data.teamPosts.push(team);
+        await saveDb();
+
+        await interaction.reply({
+          content: `组队招募已创建，消息 ID：\`${sentMessage.id}\``,
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'team-end') {
+        const messageId = interaction.options.getString('message_id', true);
+        const team = db.data.teamPosts.find(t => t.messageId === messageId);
+
+        if (!team) {
+          await interaction.reply({
+            content: '找不到这个组队消息。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        team.closed = true;
+        await saveDb();
+        await refreshTeamMessage(team);
+
+        await interaction.reply({
+          content: '组队报名已关闭。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (interaction.commandName === 'team-list') {
+        const messageId = interaction.options.getString('message_id', true);
+        const team = db.data.teamPosts.find(t => t.messageId === messageId);
+
+        if (!team) {
+          await interaction.reply({
+            content: '找不到这个组队消息。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const players = team.players || [];
+
+        if (!players.length) {
+          await interaction.reply({
+            content: `**${team.title}**\n目前还没有人参加。`,
+            ephemeral: true
+          });
+          return;
+        }
+
+        const lines = players.map((id, index) => `${index + 1}. <@${id}>`);
+
+        await interaction.reply({
+          content: `**${team.title}**\n人数：${players.length}/${team.maxPlayers}\n\n${lines.join('\n')}`.slice(0, 1900),
+          ephemeral: true
+        });
+        return;
       }
     } catch (error) {
       console.error(error);
@@ -947,6 +1111,90 @@ client.on(Events.InteractionCreate, async interaction => {
 
       await interaction.reply({
         content: '你已经成功参加抽奖。',
+        ephemeral: true
+      });
+
+      return;
+    }
+
+    if (interaction.customId.startsWith('team_join_')) {
+      const teamId = interaction.customId.replace('team_join_', '');
+      const team = db.data.teamPosts.find(t => t.id === teamId);
+
+      if (!team) {
+        await interaction.reply({
+          content: '找不到这个组队消息。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (team.closed) {
+        await interaction.reply({
+          content: '这个组队报名已经关闭。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      team.players ||= [];
+
+      if (team.players.includes(interaction.user.id)) {
+        await interaction.reply({
+          content: '你已经参加了。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (team.players.length >= team.maxPlayers) {
+        await interaction.reply({
+          content: '人数已满。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      team.players.push(interaction.user.id);
+      await saveDb();
+      await refreshTeamMessage(team);
+
+      await interaction.reply({
+        content: '你已成功加入组队。',
+        ephemeral: true
+      });
+
+      return;
+    }
+
+    if (interaction.customId.startsWith('team_leave_')) {
+      const teamId = interaction.customId.replace('team_leave_', '');
+      const team = db.data.teamPosts.find(t => t.id === teamId);
+
+      if (!team) {
+        await interaction.reply({
+          content: '找不到这个组队消息。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      team.players ||= [];
+
+      if (!team.players.includes(interaction.user.id)) {
+        await interaction.reply({
+          content: '你本来就没有参加。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      team.players = team.players.filter(id => id !== interaction.user.id);
+      await saveDb();
+      await refreshTeamMessage(team);
+
+      await interaction.reply({
+        content: '你已退出组队。',
         ephemeral: true
       });
 

@@ -128,6 +128,39 @@ const commands = [
     .addStringOption(option =>
       option.setName('message_id').setDescription('抽奖消息 ID').setRequired(true)
     )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('team-create')
+    .setDescription('创建组队招募')
+    .addChannelOption(option =>
+      option.setName('channel').setDescription('发布到哪个频道').setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(true)
+    )
+    .addStringOption(option =>
+      option.setName('description').setDescription('说明 / 时间 / 规则').setRequired(false)
+    )
+    .addIntegerOption(option =>
+      option.setName('max_players').setDescription('人数上限').setRequired(true).setMinValue(1).setMaxValue(99)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('team-end')
+    .setDescription('手动关闭组队招募')
+    .addStringOption(option =>
+      option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
+    )
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  new SlashCommandBuilder()
+    .setName('team-list')
+    .setDescription('查看组队参与名单')
+    .addStringOption(option =>
+      option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
+    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
 ].map(command => command.toJSON());
 
