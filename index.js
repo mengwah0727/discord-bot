@@ -87,6 +87,20 @@ const dayMap = {
   saturday: 6
 };
 
+const ADMIN_ONLY_COMMANDS = new Set([
+  'send',
+  'schedule',
+  'schedule-weekly',
+  'schedule-list',
+  'schedule-delete',
+  'tempvoice-set',
+  'tempvoice-disable',
+  'giveaway-start',
+  'giveaway-end',
+  'giveaway-reroll',
+  'giveaway-participants'
+]);
+
 function parseDuration(input) {
   if (!input) return null;
 
@@ -197,10 +211,7 @@ function buildGiveawayEmbed(giveaway, hostUserId, entryCountOverride = null) {
   const entryCount = entryCountOverride ?? (giveaway.entries?.length || 0);
   const endsAt = new Date(giveaway.endsAt);
 
-  const parts = [
-    giveaway.prize,
-    ''
-  ];
+  const parts = [giveaway.prize, ''];
 
   if (giveaway.description?.trim()) {
     parts.push(normalizeMessage(giveaway.description));
@@ -231,7 +242,13 @@ function teamButtonRow(teamId, closed = false) {
       .setLabel('Leave')
       .setEmoji('❌')
       .setStyle(ButtonStyle.Secondary)
-      .setDisabled(closed)
+      .setDisabled(closed),
+    new ButtonBuilder()
+      .setCustomId(`team_delete_${teamId}`)
+      .setLabel('Delete')
+      .setEmoji('🗑️')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(false)
   );
 }
 
@@ -247,6 +264,9 @@ function buildTeamEmbed(team) {
     lines.push('');
   }
 
+  lines.push(`**创建者：** <@${team.createdBy}>`);
+  lines.push('');
+
   if (players.length) {
     lines.push('**参与名单：**');
     players.forEach((id, index) => {
@@ -261,7 +281,7 @@ function buildTeamEmbed(team) {
     .setColor(APPLE_GREEN)
     .setTitle(team.title)
     .setDescription(lines.join('\n'))
-    .setFooter({ text: team.closed ? '报名已关闭' : '点击按钮参加或退出' })
+    .setFooter({ text: team.closed ? '报名已关闭' : '点击按钮参加、退出或删除' })
     .setTimestamp();
 }
 
@@ -441,6 +461,23 @@ async function refreshTeamMessage(team) {
   }
 }
 
+async function deleteTeamPost(team) {
+  try {
+    const channel = await client.channels.fetch(team.channelId).catch(() => null);
+    if (channel && channel.isTextBased()) {
+      const message = await channel.messages.fetch(team.messageId).catch(() => null);
+      if (message) {
+        await message.delete().catch(() => {});
+      }
+    }
+  } catch (error) {
+    console.error('删除组队消息失败:', error);
+  }
+
+  db.data.teamPosts = db.data.teamPosts.filter(t => t.id !== team.id);
+  await saveDb();
+}
+
 async function deleteTempVoiceChannelNow(channel) {
   try {
     const freshChannel = await client.channels.fetch(channel.id).catch(() => null);
@@ -552,11 +589,12 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand()) {
+    const needsAdmin = ADMIN_ONLY_COMMANDS.has(interaction.commandName);
     const hasPermission = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
-    if (!hasPermission) {
+    if (needsAdmin && !hasPermission) {
       await interaction.reply({
-        content: '你需要有 Manage Server 权限才可以使用这些指令。',
+        content: '你需要有 Manage Server 权限才可以使用这个指令。',
         ephemeral: true
       });
       return;
@@ -927,29 +965,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (interaction.commandName === 'team-end') {
-        const messageId = interaction.options.getString('message_id', true);
-        const team = db.data.teamPosts.find(t => t.messageId === messageId);
-
-        if (!team) {
-          await interaction.reply({
-            content: '找不到这个组队消息。',
-            ephemeral: true
-          });
-          return;
-        }
-
-        team.closed = true;
-        await saveDb();
-        await refreshTeamMessage(team);
-
-        await interaction.reply({
-          content: '组队报名已关闭。',
-          ephemeral: true
-        });
-        return;
-      }
-
       if (interaction.commandName === 'team-list') {
         const messageId = interaction.options.getString('message_id', true);
         const team = db.data.teamPosts.find(t => t.messageId === messageId);
@@ -1194,7 +1209,40 @@ client.on(Events.InteractionCreate, async interaction => {
       await refreshTeamMessage(team);
 
       await interaction.reply({
-        content: '你已退出组队。',
+          content: '你已退出组队。',
+          ephemeral: true
+      });
+
+      return;
+    }
+
+    if (interaction.customId.startsWith('team_delete_')) {
+      const teamId = interaction.customId.replace('team_delete_', '');
+      const team = db.data.teamPosts.find(t => t.id === teamId);
+
+      if (!team) {
+        await interaction.reply({
+          content: '找不到这个组队消息。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
+      const isCreator = interaction.user.id === team.createdBy;
+
+      if (!isAdmin && !isCreator) {
+        await interaction.reply({
+          content: '只有创建这个组队的人或管理员可以删除。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      await deleteTeamPost(team);
+
+      await interaction.reply({
+        content: '组队消息已删除。',
         ephemeral: true
       });
 
