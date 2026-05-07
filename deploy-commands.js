@@ -10,42 +10,42 @@ import {
 const commands = [
   new SlashCommandBuilder()
     .setName('send')
-    .setDescription('发送一条消息到指定频道')
+    .setDescription('發送一條消息到指定頻道')
     .addChannelOption(option =>
-      option.setName('channel').setDescription('目标频道').setRequired(true)
+      option.setName('channel').setDescription('目標頻道').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('message').setDescription('消息内容').setRequired(true)
+      option.setName('message').setDescription('消息內容').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('schedule')
-    .setDescription('定时发送一次消息')
+    .setDescription('定時發送一次消息')
     .addChannelOption(option =>
-      option.setName('channel').setDescription('目标频道').setRequired(true)
+      option.setName('channel').setDescription('目標頻道').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('message').setDescription('消息内容').setRequired(true)
+      option.setName('message').setDescription('消息內容').setRequired(true)
     )
     .addStringOption(option =>
       option
         .setName('delay')
-        .setDescription('多久后发送，例如 10m、2h、1d、1d2h30m')
+        .setDescription('多久後發送，例如 10m、2h、1d、1d2h30m')
         .setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('schedule-weekly')
-    .setDescription('每周固定时间发送公告')
+    .setDescription('每週固定時間發送公告')
     .addChannelOption(option =>
-      option.setName('channel').setDescription('目标频道').setRequired(true)
+      option.setName('channel').setDescription('目標頻道').setRequired(true)
     )
     .addStringOption(option =>
       option
         .setName('day')
-        .setDescription('星期几')
+        .setDescription('星期幾')
         .setRequired(true)
         .addChoices(
           { name: 'Monday', value: 'monday' },
@@ -58,10 +58,10 @@ const commands = [
         )
     )
     .addStringOption(option =>
-      option.setName('time').setDescription('时间，例如 20:30').setRequired(true)
+      option.setName('time').setDescription('時間，例如 20:30').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('message').setDescription('公告内容').setRequired(true)
+      option.setName('message').setDescription('公告內容').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
@@ -72,7 +72,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('schedule-delete')
-    .setDescription('删除固定公告')
+    .setDescription('刪除固定公告')
     .addStringOption(option =>
       option.setName('id').setDescription('公告 ID').setRequired(true)
     )
@@ -80,11 +80,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('tempvoice-set')
-    .setDescription('设置 Join to Create 语音频道')
+    .setDescription('設置 Join to Create 語音頻道')
     .addChannelOption(option =>
       option
         .setName('channel')
-        .setDescription('语音频道')
+        .setDescription('語音頻道')
         .addChannelTypes(ChannelType.GuildVoice)
         .setRequired(true)
     )
@@ -92,79 +92,79 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('tempvoice-disable')
-    .setDescription('关闭 Join to Create')
+    .setDescription('關閉 Join to Create')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('giveaway-start')
-    .setDescription('打开 Giveaway 创建表单')
+    .setDescription('打開 Giveaway 創建表單')
     .addChannelOption(option =>
-      option.setName('channel').setDescription('抽奖频道').setRequired(true)
+      option.setName('channel').setDescription('抽獎頻道').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('giveaway-end')
-    .setDescription('手动结束抽奖')
+    .setDescription('手動結束抽獎')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽奖消息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('giveaway-reroll')
-    .setDescription('重新抽中奖者')
+    .setDescription('重新抽中獎者')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽奖消息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .addIntegerOption(option =>
-      option.setName('winners').setDescription('重抽几人').setRequired(false).setMinValue(1)
+      option.setName('winners').setDescription('重抽幾人').setRequired(false).setMinValue(1)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('giveaway-participants')
-    .setDescription('查看参与人数')
+    .setDescription('查看參與人數')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽奖消息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-  // 👇 这些是普通用户可用（没有权限限制）
+  // 👇 這些是普通用戶可用（沒有權限限制）
   new SlashCommandBuilder()
     .setName('team-create')
-    .setDescription('创建组队招募')
+    .setDescription('創建組隊招募')
     .addChannelOption(option =>
-      option.setName('channel').setDescription('发布到哪个频道').setRequired(true)
+      option.setName('channel').setDescription('發布到哪個頻道').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(true)
+      option.setName('title').setDescription('標題，例如 CODM 組隊').setRequired(true)
     )
     .addIntegerOption(option =>
       option
         .setName('max_players')
-        .setDescription('人数上限')
+        .setDescription('人數上限')
         .setRequired(true)
         .setMinValue(1)
         .setMaxValue(99)
     )
     .addStringOption(option =>
-      option.setName('description').setDescription('说明 / 时间 / 规则').setRequired(false)
+      option.setName('description').setDescription('說明 / 時間 / 規則').setRequired(false)
     ),
 
   new SlashCommandBuilder()
     .setName('team-end')
-    .setDescription('手动关闭组队招募')
+    .setDescription('手動關閉組隊招募')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
+      option.setName('message_id').setDescription('組隊消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('team-list')
-    .setDescription('查看组队参与名单')
+    .setDescription('查看組隊參與名單')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
+      option.setName('message_id').setDescription('組隊消息 ID').setRequired(true)
     )
 ].map(command => command.toJSON());
 
@@ -172,14 +172,14 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
   try {
-    console.log('开始注册 GLOBAL Slash 指令...');
+    console.log('開始註冊 GLOBAL Slash 指令...');
 
     await rest.put(
-      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), // ⭐ 关键：global
+      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), // ⭐ 關鍵：global
       { body: commands }
     );
 
-    console.log('Slash 指令注册成功');
+    console.log('Slash 指令註冊成功');
   } catch (error) {
     console.error(error);
   }
