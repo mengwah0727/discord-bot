@@ -10,23 +10,23 @@ import {
 const commands = [
   new SlashCommandBuilder()
     .setName('send')
-    .setDescription('發送一條訊息到指定頻道')
+    .setDescription('發送一條消息到指定頻道')
     .addChannelOption(option =>
       option.setName('channel').setDescription('目標頻道').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('message').setDescription('訊息內容').setRequired(true)
+      option.setName('message').setDescription('消息內容').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
     .setName('schedule')
-    .setDescription('定時發送一次訊息')
+    .setDescription('定時發送一次消息')
     .addChannelOption(option =>
       option.setName('channel').setDescription('目標頻道').setRequired(true)
     )
     .addStringOption(option =>
-      option.setName('message').setDescription('訊息內容').setRequired(true)
+      option.setName('message').setDescription('消息內容').setRequired(true)
     )
     .addStringOption(option =>
       option
@@ -97,7 +97,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('giveaway-start')
-    .setDescription('開啟 Giveaway 創建表單')
+    .setDescription('打開 Giveaway 創建表單')
     .addChannelOption(option =>
       option.setName('channel').setDescription('抽獎頻道').setRequired(true)
     )
@@ -107,7 +107,7 @@ const commands = [
     .setName('giveaway-end')
     .setDescription('手動結束抽獎')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽獎訊息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
@@ -115,7 +115,7 @@ const commands = [
     .setName('giveaway-reroll')
     .setDescription('重新抽中獎者')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽獎訊息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .addIntegerOption(option =>
       option.setName('winners').setDescription('重抽幾人').setRequired(false).setMinValue(1)
@@ -126,11 +126,11 @@ const commands = [
     .setName('giveaway-participants')
     .setDescription('查看參與人數')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('抽獎訊息 ID').setRequired(true)
+      option.setName('message_id').setDescription('抽獎消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
-  // 👇 普通用戶可用（沒有權限限制）
+  // 👇 這些是普通用戶可用（沒有權限限制）
   new SlashCommandBuilder()
     .setName('team-create')
     .setDescription('創建組隊招募')
@@ -156,7 +156,7 @@ const commands = [
     .setName('team-end')
     .setDescription('手動關閉組隊招募')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('組隊訊息 ID').setRequired(true)
+      option.setName('message_id').setDescription('組隊消息 ID').setRequired(true)
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
@@ -164,7 +164,7 @@ const commands = [
     .setName('team-list')
     .setDescription('查看組隊參與名單')
     .addStringOption(option =>
-      option.setName('message_id').setDescription('組隊訊息 ID').setRequired(true)
+      option.setName('message_id').setDescription('組隊消息 ID').setRequired(true)
     )
 ].map(command => command.toJSON());
 
@@ -175,7 +175,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     console.log('開始註冊 GLOBAL Slash 指令...');
 
     await rest.put(
-      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+      Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), // ⭐ 關鍵：global
       { body: commands }
     );
 

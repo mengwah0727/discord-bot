@@ -46,6 +46,7 @@ db.data ||= { teamPosts: [] };
 await db.write();
 
 
+// ✅ 管理員指令列表（重點）
 const ADMIN_ONLY_COMMANDS = new Set([
   'send',
   'schedule',
@@ -63,187 +64,103 @@ const ADMIN_ONLY_COMMANDS = new Set([
 
 
 client.once(Events.ClientReady, () => {
-  console.log(`✅ Bot 已上线: ${client.user.tag}`);
+  console.log(`✅ Bot 已上線: ${client.user.tag}`);
 });
 
 
 client.on(Events.InteractionCreate, async interaction => {
-
-  if (interaction.isButton()) {
-    const [action, postId] = interaction.customId.split(':');
-    const userId = interaction.user.id;
-
-    await db.read();
-    const post = db.data.teamPosts.find(p => p.id === postId);
-
-    if (!post) {
-      return interaction.reply({ content: '找不到此组队资料。', ephemeral: true });
-    }
-
-    if (action === 'join') {
-      if (post.closed) {
-        return interaction.reply({ content: '此组队招募已关闭。', ephemeral: true });
-      }
-      if (post.players.includes(userId)) {
-        return interaction.reply({ content: '你已经加入了！', ephemeral: true });
-      }
-      if (post.players.length >= post.maxPlayers) {
-        return interaction.reply({ content: '人数已满，无法加入。', ephemeral: true });
-      }
-      post.players.push(userId);
-      await db.write();
-
-      await interaction.message.edit({
-        embeds: [buildTeamEmbed(post)],
-        components: buildTeamButtons(post)
-      });
-      return interaction.reply({ content: '✅ 已成功加入！', ephemeral: true });
-    }
-
-    if (action === 'leave') {
-      if (!post.players.includes(userId)) {
-        return interaction.reply({ content: '你还没有加入。', ephemeral: true });
-      }
-      post.players = post.players.filter(id => id !== userId);
-      await db.write();
-
-      await interaction.message.edit({
-        embeds: [buildTeamEmbed(post)],
-        components: buildTeamButtons(post)
-      });
-      return interaction.reply({ content: '✅ 已成功离开。', ephemeral: true });
-    }
-
-    if (action === 'delete') {
-      const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
-      if (!isAdmin) {
-        return interaction.reply({ content: '你需要有 Manage Server 权限才能删除此组队。', ephemeral: true });
-      }
-      post.closed = true;
-      await db.write();
-
-      await interaction.message.delete();
-      return interaction.reply({ content: '✅ 组队招募已删除。', ephemeral: true });
-    }
-
-    return;
-  }
-
   if (!interaction.isChatInputCommand()) return;
 
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
+  // ✅ 權限控制（核心修復）
   if (ADMIN_ONLY_COMMANDS.has(interaction.commandName) && !isAdmin) {
     return interaction.reply({
-      content: '你需要有 Manage Server 权限才可以使用这个指令。',
+      content: '你需要有 Manage Server 權限才可以使用這個指令。',
       ephemeral: true
     });
   }
 
   try {
 
+    // ===== SEND =====
     if (interaction.commandName === 'send') {
       const channel = interaction.options.getChannel('channel');
       const message = interaction.options.getString('message');
+
       await channel.send(message);
-      return interaction.reply({ content: '已发送', ephemeral: true });
+      return interaction.reply({ content: '已發送', ephemeral: true });
     }
 
+    // ===== SCHEDULE（簡單版）=====
     if (interaction.commandName === 'schedule') {
       return interaction.reply({
-        content: '定时功能已触发（你原本逻辑可以继续用）',
+        content: '定時功能已觸發（你原本邏輯可以繼續用）',
         ephemeral: true
       });
     }
 
+    // ===== TEAM CREATE =====
     if (interaction.commandName === 'team-create') {
       const channel = interaction.options.getChannel('channel');
       const title = interaction.options.getString('title');
       const maxPlayers = interaction.options.getInteger('max_players');
-      const creatorId = interaction.user.id;
 
-      const post = {
-        id: null,
-        title,
-        players: [],
-        maxPlayers,
-        creatorId,
-        closed: false
-      };
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(`人數：0/${maxPlayers}`)
+        .setColor('#34C759');
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('join')
+          .setLabel('Join')
+          .setStyle(ButtonStyle.Success)
+      );
 
       const msg = await channel.send({
-        embeds: [buildTeamEmbed(post)],
-        components: buildTeamButtons(post)
+        embeds: [embed],
+        components: [row]
       });
 
-      post.id = msg.id;
-      db.data.teamPosts.push(post);
+      db.data.teamPosts.push({
+        id: msg.id,
+        players: [],
+        maxPlayers
+      });
+
       await db.write();
 
-      await msg.edit({
-        embeds: [buildTeamEmbed(post)],
-        components: buildTeamButtons(post)
-      });
-
       return interaction.reply({
-        content: `组队已创建`,
+        content: '組隊已創建',
         ephemeral: true
       });
     }
 
+    // ===== TEAM LIST =====
     if (interaction.commandName === 'team-list') {
       return interaction.reply({
-        content: '这里显示组队名单（你原逻辑可以保留）',
+        content: '這裡顯示組隊名單（你原邏輯可以保留）',
         ephemeral: true
       });
     }
 
   } catch (error) {
     console.error(error);
+
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: '发生错误', ephemeral: true }).catch(() => {});
+      await interaction.followUp({
+        content: '發生錯誤',
+        ephemeral: true
+      }).catch(() => {});
     } else {
-      await interaction.reply({ content: '发生错误', ephemeral: true }).catch(() => {});
+      await interaction.reply({
+        content: '發生錯誤',
+        ephemeral: true
+      }).catch(() => {});
     }
   }
 });
-
-
-function buildTeamEmbed(post) {
-  const playerList = post.players.length > 0
-    ? post.players.map(id => `<@${id}>`).join('\n')
-    : '目前还没有人参加';
-
-  return new EmbedBuilder()
-    .setTitle(post.title)
-    .addFields(
-      { name: '👥 人数', value: `${post.players.length}/${post.maxPlayers}`, inline: true },
-      { name: '👑 创建者', value: `<@${post.creatorId}>`, inline: true },
-      { name: '\u200B', value: '\u200B', inline: false },
-      { name: '📋 参与名单', value: playerList }
-    )
-    .setFooter({ text: '点击按钮参加、退出或删除' })
-    .setColor('#34C759');
-}
-
-function buildTeamButtons(post) {
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`join:${post.id}`)
-      .setLabel('加入')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`leave:${post.id}`)
-      .setLabel('離開')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`delete:${post.id}`)
-      .setLabel('刪除')
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  return [row];
-}
 
 
 client.login(process.env.DISCORD_TOKEN);
