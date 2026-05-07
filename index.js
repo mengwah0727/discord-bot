@@ -46,7 +46,7 @@ db.data ||= { teamPosts: [] };
 await db.write();
 
 
-// ✅ 管理員指令列表（重點）
+// ✅ 管理员指令列表（重点）
 const ADMIN_ONLY_COMMANDS = new Set([
   'send',
   'schedule',
@@ -64,7 +64,7 @@ const ADMIN_ONLY_COMMANDS = new Set([
 
 
 client.once(Events.ClientReady, () => {
-  console.log(`✅ Bot 已上線: ${client.user.tag}`);
+  console.log(`✅ Bot 已上线: ${client.user.tag}`);
 });
 
 
@@ -73,10 +73,10 @@ client.on(Events.InteractionCreate, async interaction => {
 
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
-  // ✅ 權限控制（核心修復）
+  // ✅ 权限控制（核心修复）
   if (ADMIN_ONLY_COMMANDS.has(interaction.commandName) && !isAdmin) {
     return interaction.reply({
-      content: '你需要有 Manage Server 權限才可以使用這個指令。',
+      content: '你需要有 Manage Server 权限才可以使用这个指令。',
       ephemeral: true
     });
   }
@@ -89,13 +89,13 @@ client.on(Events.InteractionCreate, async interaction => {
       const message = interaction.options.getString('message');
 
       await channel.send(message);
-      return interaction.reply({ content: '已發送', ephemeral: true });
+      return interaction.reply({ content: '已发送', ephemeral: true });
     }
 
-    // ===== SCHEDULE（簡單版）=====
+    // ===== SCHEDULE（简单版）=====
     if (interaction.commandName === 'schedule') {
       return interaction.reply({
-        content: '定時功能已觸發（你原本邏輯可以繼續用）',
+        content: '定时功能已触发（你原本逻辑可以继续用）',
         ephemeral: true
       });
     }
@@ -108,7 +108,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       const embed = new EmbedBuilder()
         .setTitle(title)
-        .setDescription(`人數：0/${maxPlayers}`)
+        .setDescription(`人数：0/${maxPlayers}`)
         .setColor('#34C759');
 
       const row = new ActionRowBuilder().addComponents(
@@ -132,7 +132,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await db.write();
 
       return interaction.reply({
-        content: '組隊已創建',
+        content: '组队已创建',
         ephemeral: true
       });
     }
@@ -140,7 +140,7 @@ client.on(Events.InteractionCreate, async interaction => {
     // ===== TEAM LIST =====
     if (interaction.commandName === 'team-list') {
       return interaction.reply({
-        content: '這裡顯示組隊名單（你原邏輯可以保留）',
+        content: '这里显示组队名单（你原逻辑可以保留）',
         ephemeral: true
       });
     }
@@ -150,12 +150,12 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({
-        content: '發生錯誤',
+        content: '发生错误',
         ephemeral: true
       }).catch(() => {});
     } else {
       await interaction.reply({
-        content: '發生錯誤',
+        content: '发生错误',
         ephemeral: true
       }).catch(() => {});
     }
