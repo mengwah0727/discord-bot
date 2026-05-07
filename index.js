@@ -46,7 +46,6 @@ db.data ||= { teamPosts: [] };
 await db.write();
 
 
-// ✅ 管理员指令列表（重点）
 const ADMIN_ONLY_COMMANDS = new Set([
   'send',
   'schedule',
@@ -70,7 +69,6 @@ client.once(Events.ClientReady, () => {
 
 client.on(Events.InteractionCreate, async interaction => {
 
-  // ===== 按钮互动处理 =====
   if (interaction.isButton()) {
     const [action, postId] = interaction.customId.split(':');
     const userId = interaction.user.id;
@@ -82,7 +80,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({ content: '找不到此组队资料。', ephemeral: true });
     }
 
-    // 加入
     if (action === 'join') {
       if (post.closed) {
         return interaction.reply({ content: '此组队招募已关闭。', ephemeral: true });
@@ -103,7 +100,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({ content: '✅ 已成功加入！', ephemeral: true });
     }
 
-    // 离开
     if (action === 'leave') {
       if (!post.players.includes(userId)) {
         return interaction.reply({ content: '你还没有加入。', ephemeral: true });
@@ -118,7 +114,6 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({ content: '✅ 已成功离开。', ephemeral: true });
     }
 
-    // 删除（仅管理员）
     if (action === 'delete') {
       const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
       if (!isAdmin) {
@@ -127,11 +122,8 @@ client.on(Events.InteractionCreate, async interaction => {
       post.closed = true;
       await db.write();
 
-      await interaction.message.edit({
-        embeds: [buildTeamEmbed(post)],
-        components: []
-      });
-      return interaction.reply({ content: '✅ 组队招募已关闭。', ephemeral: true });
+      await interaction.message.delete();
+      return interaction.reply({ content: '✅ 组队招募已删除。', ephemeral: true });
     }
 
     return;
@@ -141,7 +133,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
   const isAdmin = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
-  // ✅ 权限控制
   if (ADMIN_ONLY_COMMANDS.has(interaction.commandName) && !isAdmin) {
     return interaction.reply({
       content: '你需要有 Manage Server 权限才可以使用这个指令。',
@@ -151,16 +142,13 @@ client.on(Events.InteractionCreate, async interaction => {
 
   try {
 
-    // ===== SEND =====
     if (interaction.commandName === 'send') {
       const channel = interaction.options.getChannel('channel');
       const message = interaction.options.getString('message');
-
       await channel.send(message);
       return interaction.reply({ content: '已发送', ephemeral: true });
     }
 
-    // ===== SCHEDULE =====
     if (interaction.commandName === 'schedule') {
       return interaction.reply({
         content: '定时功能已触发（你原本逻辑可以继续用）',
@@ -168,7 +156,6 @@ client.on(Events.InteractionCreate, async interaction => {
       });
     }
 
-    // ===== TEAM CREATE =====
     if (interaction.commandName === 'team-create') {
       const channel = interaction.options.getChannel('channel');
       const title = interaction.options.getString('title');
@@ -199,12 +186,11 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       return interaction.reply({
-        content: `组队已创建，消息 ID：${msg.id}`,
+        content: `组队已创建`,
         ephemeral: true
       });
     }
 
-    // ===== TEAM LIST =====
     if (interaction.commandName === 'team-list') {
       return interaction.reply({
         content: '这里显示组队名单（你原逻辑可以保留）',
@@ -214,45 +200,33 @@ client.on(Events.InteractionCreate, async interaction => {
 
   } catch (error) {
     console.error(error);
-
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: '发生错误',
-        ephemeral: true
-      }).catch(() => {});
+      await interaction.followUp({ content: '发生错误', ephemeral: true }).catch(() => {});
     } else {
-      await interaction.reply({
-        content: '发生错误',
-        ephemeral: true
-      }).catch(() => {});
+      await interaction.reply({ content: '发生错误', ephemeral: true }).catch(() => {});
     }
   }
 });
 
-
-// ===== 工具函数 =====
 
 function buildTeamEmbed(post) {
   const playerList = post.players.length > 0
     ? post.players.map(id => `<@${id}>`).join('\n')
     : '目前还没有人参加';
 
-  const status = post.closed ? '（已关闭）' : '';
-
   return new EmbedBuilder()
-    .setTitle(`${post.title} ${status}`)
+    .setTitle(post.title)
     .addFields(
-      { name: '人数', value: `${post.players.length}/${post.maxPlayers}` },
-      { name: '创建者', value: `<@${post.creatorId}>` },
-      { name: '参与名单', value: playerList }
+      { name: '👥 人数', value: `${post.players.length}/${post.maxPlayers}`, inline: true },
+      { name: '👑 创建者', value: `<@${post.creatorId}>`, inline: true },
+      { name: '\u200B', value: '\u200B', inline: false },
+      { name: '📋 参与名单', value: playerList }
     )
     .setFooter({ text: '点击按钮参加、退出或删除' })
-    .setColor(post.closed ? '#FF3B30' : '#34C759');
+    .setColor('#34C759');
 }
 
 function buildTeamButtons(post) {
-  if (post.closed) return [];
-
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`join:${post.id}`)
