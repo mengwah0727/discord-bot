@@ -229,33 +229,74 @@ function buildGiveawayEmbed(giveaway, hostUserId, entryCountOverride = null) {
     .setTimestamp();
 }
 
+const TEAM_ROLE_LABELS = {
+  dps: '輸出',
+  tank: '坦克',
+  healer: '奶媽'
+};
+
+const TEAM_ROLE_EMOJIS = {
+  dps: '⚔️',
+  tank: '🛡️',
+  healer: '💚'
+};
+
+function normalizeTeamPlayer(player) {
+  if (typeof player === 'string') {
+    return { userId: player, role: 'dps' };
+  }
+
+  return {
+    userId: player.userId,
+    role: player.role || 'dps'
+  };
+}
+
 function teamButtonRow(teamId, closed = false) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`team_join_${teamId}`)
-      .setLabel('Join')
-      .setEmoji('✅')
+      .setCustomId(`team_role_dps_${teamId}`)
+      .setLabel('輸出')
+      .setEmoji('⚔️')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(closed),
+    new ButtonBuilder()
+      .setCustomId(`team_role_tank_${teamId}`)
+      .setLabel('坦克')
+      .setEmoji('🛡️')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(closed),
+    new ButtonBuilder()
+      .setCustomId(`team_role_healer_${teamId}`)
+      .setLabel('奶媽')
+      .setEmoji('💚')
       .setStyle(ButtonStyle.Success)
       .setDisabled(closed),
     new ButtonBuilder()
       .setCustomId(`team_leave_${teamId}`)
-      .setLabel('Leave')
-      .setEmoji('❌')
+      .setLabel('退出')
+      .setEmoji('🚪')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(closed),
     new ButtonBuilder()
       .setCustomId(`team_delete_${teamId}`)
-      .setLabel('Delete')
+      .setLabel('刪除')
       .setEmoji('🗑️')
-      .setStyle(ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Secondary)
       .setDisabled(false)
   );
 }
 
 function buildTeamEmbed(team) {
-  const players = team.players || [];
+  team.players ||= [];
+  const players = team.players.map(normalizeTeamPlayer);
+
+  const dpsPlayers = players.filter(p => p.role === 'dps');
+  const tankPlayers = players.filter(p => p.role === 'tank');
+  const healerPlayers = players.filter(p => p.role === 'healer');
+
   const lines = [
-    `**人数：** ${players.length}/${team.maxPlayers}`,
+    `**人數：** ${players.length}/${team.maxPlayers}`,
     ''
   ];
 
@@ -264,24 +305,45 @@ function buildTeamEmbed(team) {
     lines.push('');
   }
 
-  lines.push(`**创建者：** <@${team.createdBy}>`);
+  lines.push(`**創建者：** <@${team.createdBy}>`);
+  lines.push('');
+  lines.push('**參與名單：**');
   lines.push('');
 
-  if (players.length) {
-    lines.push('**参与名单：**');
-    players.forEach((id, index) => {
-      lines.push(`${index + 1}. <@${id}>`);
+  lines.push('⚔️ **輸出**');
+  if (dpsPlayers.length) {
+    dpsPlayers.forEach((player, index) => {
+      lines.push(`${index + 1}. <@${player.userId}>`);
     });
   } else {
-    lines.push('**参与名单：**');
-    lines.push('目前还没有人参加');
+    lines.push('目前沒有人');
+  }
+
+  lines.push('');
+  lines.push('🛡️ **坦克**');
+  if (tankPlayers.length) {
+    tankPlayers.forEach((player, index) => {
+      lines.push(`${index + 1}. <@${player.userId}>`);
+    });
+  } else {
+    lines.push('目前沒有人');
+  }
+
+  lines.push('');
+  lines.push('💚 **奶媽**');
+  if (healerPlayers.length) {
+    healerPlayers.forEach((player, index) => {
+      lines.push(`${index + 1}. <@${player.userId}>`);
+    });
+  } else {
+    lines.push('目前沒有人');
   }
 
   return new EmbedBuilder()
     .setColor(APPLE_GREEN)
     .setTitle(team.title)
     .setDescription(lines.join('\n'))
-    .setFooter({ text: team.closed ? '报名已关闭' : '点击按钮参加、退出或删除' })
+    .setFooter({ text: team.closed ? '報名已關閉' : '點擊職業按鈕加入、切換職業或退出' })
     .setTimestamp();
 }
 
@@ -977,20 +1039,24 @@ client.on(Events.InteractionCreate, async interaction => {
           return;
         }
 
-        const players = team.players || [];
+        const players = (team.players || []).map(normalizeTeamPlayer);
 
         if (!players.length) {
           await interaction.reply({
-            content: `**${team.title}**\n目前还没有人参加。`,
+            content: `**${team.title}**\n目前還沒有人參加。`,
             ephemeral: true
           });
           return;
         }
 
-        const lines = players.map((id, index) => `${index + 1}. <@${id}>`);
+        const lines = players.map((player, index) => {
+          const emoji = TEAM_ROLE_EMOJIS[player.role] || '✅';
+          const label = TEAM_ROLE_LABELS[player.role] || '隊員';
+          return `${index + 1}. ${emoji} ${label} - <@${player.userId}>`;
+        });
 
         await interaction.reply({
-          content: `**${team.title}**\n人数：${players.length}/${team.maxPlayers}\n\n${lines.join('\n')}`.slice(0, 1900),
+          content: `**${team.title}**\n人數：${players.length}/${team.maxPlayers}\n\n${lines.join('\n')}`.slice(0, 1900),
           ephemeral: true
         });
         return;
@@ -1132,13 +1198,15 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    if (interaction.customId.startsWith('team_join_')) {
-      const teamId = interaction.customId.replace('team_join_', '');
+    if (interaction.customId.startsWith('team_role_')) {
+      const roleAndId = interaction.customId.replace('team_role_', '');
+      const [role, ...teamIdParts] = roleAndId.split('_');
+      const teamId = teamIdParts.join('_');
       const team = db.data.teamPosts.find(t => t.id === teamId);
 
       if (!team) {
         await interaction.reply({
-          content: '找不到这个组队消息。',
+          content: '找不到這個組隊消息。',
           ephemeral: true
         });
         return;
@@ -1146,36 +1214,47 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (team.closed) {
         await interaction.reply({
-          content: '这个组队报名已经关闭。',
+          content: '這個組隊報名已經關閉。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (!TEAM_ROLE_LABELS[role]) {
+        await interaction.reply({
+          content: '職業選擇錯誤。',
           ephemeral: true
         });
         return;
       }
 
       team.players ||= [];
+      team.players = team.players.map(normalizeTeamPlayer);
 
-      if (team.players.includes(interaction.user.id)) {
+      const existingPlayer = team.players.find(player => player.userId === interaction.user.id);
+
+      if (!existingPlayer && team.players.length >= team.maxPlayers) {
         await interaction.reply({
-          content: '你已经参加了。',
+          content: '人數已滿。',
           ephemeral: true
         });
         return;
       }
 
-      if (team.players.length >= team.maxPlayers) {
-        await interaction.reply({
-          content: '人数已满。',
-          ephemeral: true
+      if (existingPlayer) {
+        existingPlayer.role = role;
+      } else {
+        team.players.push({
+          userId: interaction.user.id,
+          role
         });
-        return;
       }
 
-      team.players.push(interaction.user.id);
       await saveDb();
       await refreshTeamMessage(team);
 
       await interaction.reply({
-        content: '你已成功加入组队。',
+        content: `你已選擇 ${TEAM_ROLE_EMOJIS[role]} **${TEAM_ROLE_LABELS[role]}**。`,
         ephemeral: true
       });
 
@@ -1188,29 +1267,32 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (!team) {
         await interaction.reply({
-          content: '找不到这个组队消息。',
+          content: '找不到這個組隊消息。',
           ephemeral: true
         });
         return;
       }
 
       team.players ||= [];
+      team.players = team.players.map(normalizeTeamPlayer);
 
-      if (!team.players.includes(interaction.user.id)) {
+      const joined = team.players.some(player => player.userId === interaction.user.id);
+
+      if (!joined) {
         await interaction.reply({
-          content: '你本来就没有参加。',
+          content: '你本來就沒有參加。',
           ephemeral: true
         });
         return;
       }
 
-      team.players = team.players.filter(id => id !== interaction.user.id);
+      team.players = team.players.filter(player => player.userId !== interaction.user.id);
       await saveDb();
       await refreshTeamMessage(team);
 
       await interaction.reply({
-          content: '你已退出组队。',
-          ephemeral: true
+        content: '你已退出組隊。',
+        ephemeral: true
       });
 
       return;
@@ -1232,10 +1314,7 @@ client.on(Events.InteractionCreate, async interaction => {
       const isCreator = interaction.user.id === team.createdBy;
 
       if (!isAdmin && !isCreator) {
-        await interaction.reply({
-          content: '只有创建这个组队的人或管理员可以删除。',
-          ephemeral: true
-        });
+        await interaction.deferUpdate();
         return;
       }
 
