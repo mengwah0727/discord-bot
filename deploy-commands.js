@@ -167,12 +167,11 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     console.log('开始注册 Slash 指令...');
     await rest.put(
-      Routes.applicationGuildCommands(
-        process.env.DISCORD_CLIENT_ID,
-        process.env.DISCORD_GUILD_ID
-      ),
-      { body: commands }
-    );
+  Routes.applicationCommands(
+    process.env.DISCORD_CLIENT_ID
+  ),
+  { body: commands }
+);
     console.log('Slash 指令注册成功');
   } catch (error) {
     console.error(error);
