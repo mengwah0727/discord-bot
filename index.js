@@ -1328,49 +1328,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (interaction.commandName === 'ids') {
-        const takeRecent = items => items
-          .filter(item => item.guildId === interaction.guildId)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 10);
-        const formatIds = (label, ids) => {
-          if (!ids.length) return `**${label}**\n无`;
-          return `**${label}**\n${ids.map(id => `\`${id}\``).join('\n')}`;
-        };
-
-        const teamIds = takeRecent(db.data.teamPosts).map(team => team.messageId);
-        const scheduleIds = takeRecent(db.data.scheduledMessages).map(item => item.id);
-        const weeklyIds = takeRecent(db.data.weeklySchedules).map(item => item.id);
-        const giveawayIds = takeRecent(db.data.giveaways).map(giveaway => giveaway.messageId);
-
-        const hasAnyId = [
-          teamIds,
-          scheduleIds,
-          weeklyIds,
-          giveawayIds
-        ].some(ids => ids.length);
-
-        if (!hasAnyId) {
-          await interaction.reply({
-            content: '目前没有可查询的 ID。',
-            ephemeral: true
-          });
-          return;
-        }
-
-        const lines = [
-          formatIds('Team', teamIds),
-          formatIds('Schedule', scheduleIds),
-          formatIds('Schedule Weekly', weeklyIds),
-          formatIds('Giveaway', giveawayIds)
-        ];
-
-        await interaction.reply({
-          content: lines.join('\n\n').slice(0, 1900),
-          ephemeral: true
-        });
-        return;
-      }
     } catch (error) {
       console.error(error);
 

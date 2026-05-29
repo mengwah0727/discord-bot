@@ -159,12 +159,7 @@ const commands = [
     .setDescription('查看组队参与名单')
     .addStringOption(option =>
       option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
-    ),
-
-  // 所有人可用
-  new SlashCommandBuilder()
-    .setName('ids')
-    .setDescription('查看当前服务器的 Team、Schedule、Giveaway ID')
+    )
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
