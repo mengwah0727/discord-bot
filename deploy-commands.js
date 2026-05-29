@@ -29,9 +29,6 @@ const commands = [
   new SlashCommandBuilder()
     .setName('schedule')
     .setDescription('定时发送一次消息')
-    .addChannelOption(option =>
-      option.setName('channel').setDescription('目标频道').setRequired(true)
-    )
     .addStringOption(option =>
       option.setName('message').setDescription('消息内容').setRequired(true)
     )
@@ -46,9 +43,6 @@ const commands = [
   new SlashCommandBuilder()
     .setName('schedule-weekly')
     .setDescription('每周固定时间发送公告')
-    .addChannelOption(option =>
-      option.setName('channel').setDescription('目标频道').setRequired(true)
-    )
     .addStringOption(option =>
       option
         .setName('day')
@@ -105,9 +99,6 @@ const commands = [
   new SlashCommandBuilder()
     .setName('giveaway-start')
     .setDescription('打开 Giveaway 创建表单')
-    .addChannelOption(option =>
-      option.setName('channel').setDescription('抽奖频道').setRequired(true)
-    )
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   new SlashCommandBuilder()
@@ -141,17 +132,14 @@ const commands = [
   new SlashCommandBuilder()
     .setName('team-create')
     .setDescription('创建组队招募')
-    .addChannelOption(option =>
-      option.setName('channel').setDescription('发布到哪个频道').setRequired(true)
-    )
     .addStringOption(option =>
-      option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(true)
+      option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(false)
     )
     .addIntegerOption(option =>
       option
         .setName('max_players')
-        .setDescription('人数上限')
-        .setRequired(true)
+        .setDescription('人数上限，默认 5')
+        .setRequired(false)
         .setMinValue(1)
         .setMaxValue(99)
     )

@@ -922,7 +922,7 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (interaction.commandName === 'schedule') {
-        const channel = interaction.options.getChannel('channel', true);
+        const channel = interaction.channel;
         const text = interaction.options.getString('message', true);
         const delayText = interaction.options.getString('delay', true);
 
@@ -963,7 +963,7 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (interaction.commandName === 'schedule-weekly') {
-        const channel = interaction.options.getChannel('channel', true);
+        const channel = interaction.channel;
         const day = interaction.options.getString('day', true);
         const time = interaction.options.getString('time', true);
         const text = interaction.options.getString('message', true);
@@ -1106,7 +1106,7 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (interaction.commandName === 'giveaway-start') {
-        const channel = interaction.options.getChannel('channel', true);
+        const channel = interaction.channel;
 
         if (!channel.isTextBased()) {
           await interaction.reply({
@@ -1228,10 +1228,10 @@ client.on(Events.InteractionCreate, async interaction => {
       }
 
       if (interaction.commandName === 'team-create') {
-        const channel = interaction.options.getChannel('channel', true);
-        const title = interaction.options.getString('title', true);
+        const channel = interaction.channel;
+        const title = interaction.options.getString('title') || '開黑隊伍';
         const description = interaction.options.getString('description') || '';
-        const maxPlayers = interaction.options.getInteger('max_players', true);
+        const maxPlayers = interaction.options.getInteger('max_players') || 5;
         const startTimeText = interaction.options.getString('start_time') || '';
 
         if (!channel.isTextBased()) {
