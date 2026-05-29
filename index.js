@@ -1327,6 +1327,45 @@ client.on(Events.InteractionCreate, async interaction => {
         });
         return;
       }
+
+      if (interaction.commandName === 'team-ids') {
+        const teams = db.data.teamPosts
+          .filter(team => team.guildId === interaction.guildId)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 15);
+
+        if (!teams.length) {
+          await interaction.reply({
+            content: '目前没有组队消息 ID。',
+            ephemeral: true
+          });
+          return;
+        }
+
+        const lines = teams.map(team => {
+          normalizeTeamCollections(team);
+          const createdAt = team.createdAt
+            ? `<t:${Math.floor(new Date(team.createdAt).getTime() / 1000)}:R>`
+            : '未知时间';
+          const startText = team.startAt
+            ? `\n开始：${formatDiscordTimestamp(team.startAt, 'F')}`
+            : '';
+
+          return [
+            `**${team.title}**`,
+            `频道：<#${team.channelId}>`,
+            `人数：${team.players.length}/${team.maxPlayers} | 候补：${team.waitlist.length}`,
+            `消息 ID：\`${team.messageId}\``,
+            `创建：${createdAt}${startText}`
+          ].join('\n');
+        });
+
+        await interaction.reply({
+          content: lines.join('\n\n-------------------\n\n').slice(0, 1900),
+          ephemeral: true
+        });
+        return;
+      }
     } catch (error) {
       console.error(error);
 
