@@ -156,6 +156,12 @@ const commands = [
         .setMaxValue(99)
     )
     .addStringOption(option =>
+      option
+        .setName('start_time')
+        .setDescription('开始时间，例如 21:30、05-29 21:30、2026-05-29 21:30')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
       option.setName('description').setDescription('说明 / 时间 / 规则').setRequired(false)
     ),
 
