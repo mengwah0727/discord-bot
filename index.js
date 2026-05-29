@@ -1229,9 +1229,9 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (interaction.commandName === 'team-create') {
         const channel = interaction.channel;
-        const title = interaction.options.getString('title') || '開黑隊伍';
+        const title = '開黑隊伍';
         const description = interaction.options.getString('description') || '';
-        const maxPlayers = interaction.options.getInteger('max_players') || 5;
+        const maxPlayers = 5;
         const startTimeText = interaction.options.getString('start_time') || '';
 
         if (!channel.isTextBased()) {

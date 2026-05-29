@@ -133,17 +133,6 @@ const commands = [
     .setName('team-create')
     .setDescription('创建组队招募')
     .addStringOption(option =>
-      option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(false)
-    )
-    .addIntegerOption(option =>
-      option
-        .setName('max_players')
-        .setDescription('人数上限，默认 5')
-        .setRequired(false)
-        .setMinValue(1)
-        .setMaxValue(99)
-    )
-    .addStringOption(option =>
       option
         .setName('start_time')
         .setDescription('开始时间，例如 21:30、05-29 21:30、2026-05-29 21:30')
