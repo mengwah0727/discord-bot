@@ -356,19 +356,19 @@ function teamButtonRows(teamId, closed = false) {
         .setCustomId(`team_role_dps_${teamId}`)
         .setLabel('輸出')
         .setEmoji('⚔️')
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Secondary)
         .setDisabled(closed),
       new ButtonBuilder()
         .setCustomId(`team_role_tank_${teamId}`)
         .setLabel('坦克')
         .setEmoji('🛡️')
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Secondary)
         .setDisabled(closed),
       new ButtonBuilder()
         .setCustomId(`team_role_healer_${teamId}`)
         .setLabel('奶媽')
         .setEmoji('💚')
-        .setStyle(ButtonStyle.Success)
+        .setStyle(ButtonStyle.Secondary)
         .setDisabled(closed)
     ),
     new ActionRowBuilder().addComponents(
@@ -388,7 +388,7 @@ function teamButtonRows(teamId, closed = false) {
         .setCustomId(`team_delete_${teamId}`)
         .setLabel('刪除')
         .setEmoji('🗑️')
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle(ButtonStyle.Danger)
         .setDisabled(false)
     )
   ];
