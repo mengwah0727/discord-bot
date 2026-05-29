@@ -22,6 +22,14 @@ import {
 
 const APPLE_GREEN = '#34C759';
 const UTC_PLUS_8_OFFSET_MS = 8 * 60 * 60 * 1000;
+const MAX_TIMEOUT_MS = 2_147_483_647;
+
+const requiredEnvVars = ['DISCORD_TOKEN'];
+const missingEnvVars = requiredEnvVars.filter(name => !process.env[name]);
+
+if (missingEnvVars.length) {
+  throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+}
 
 const DATA_DIR = process.env.DATA_DIR || './data';
 const DB_PATH = path.join(DATA_DIR, 'db.json');
@@ -110,8 +118,11 @@ function parseDuration(input) {
   let total = 0;
   let matchFound = false;
 
+  let consumed = '';
+
   for (const match of text.matchAll(regex)) {
     matchFound = true;
+    consumed += match[0];
     const value = Number(match[1]);
     const unit = match[2];
 
@@ -124,7 +135,7 @@ function parseDuration(input) {
     }
   }
 
-  if (!matchFound || total <= 0) return null;
+  if (!matchFound || consumed !== text || total <= 0) return null;
   return total;
 }
 
@@ -351,6 +362,44 @@ async function saveDb() {
   await db.write();
 }
 
+function scheduleLongTimeout(callback, delay) {
+  if (delay <= MAX_TIMEOUT_MS) {
+    return setTimeout(callback, delay);
+  }
+
+  const timer = {
+    timeout: null,
+    clear() {
+      if (this.timeout) clearTimeout(this.timeout);
+    }
+  };
+
+  const tick = () => {
+    delay -= MAX_TIMEOUT_MS;
+
+    if (delay <= MAX_TIMEOUT_MS) {
+      timer.timeout = setTimeout(callback, delay);
+      return;
+    }
+
+    timer.timeout = setTimeout(tick, MAX_TIMEOUT_MS);
+  };
+
+  timer.timeout = setTimeout(tick, MAX_TIMEOUT_MS);
+  return timer;
+}
+
+function clearScheduledTimer(timer) {
+  if (!timer) return;
+
+  if (typeof timer.clear === 'function') {
+    timer.clear();
+    return;
+  }
+
+  clearTimeout(timer);
+}
+
 async function sendScheduledMessage(item) {
   try {
     const channel = await client.channels.fetch(item.channelId);
@@ -374,7 +423,7 @@ function scheduleMessageJob(item) {
     return;
   }
 
-  const timer = setTimeout(() => sendScheduledMessage(item), delay);
+  const timer = scheduleLongTimeout(() => sendScheduledMessage(item), delay);
   scheduleTimers.set(item.id, timer);
 }
 
@@ -393,7 +442,7 @@ async function sendWeeklyMessage(item) {
 
 function scheduleWeeklyJob(item) {
   if (weeklyTimers.has(item.id)) {
-    clearTimeout(weeklyTimers.get(item.id));
+    clearScheduledTimer(weeklyTimers.get(item.id));
     weeklyTimers.delete(item.id);
   }
 
@@ -404,7 +453,7 @@ function scheduleWeeklyJob(item) {
   saveDb().catch(console.error);
 
   const delay = nextRun.getTime() - Date.now();
-  const timer = setTimeout(() => sendWeeklyMessage(item), delay);
+  const timer = scheduleLongTimeout(() => sendWeeklyMessage(item), delay);
   weeklyTimers.set(item.id, timer);
 }
 
@@ -504,7 +553,7 @@ function scheduleGiveawayEnd(giveaway) {
     return;
   }
 
-  const timer = setTimeout(() => endGiveaway(giveaway.id), delay);
+  const timer = scheduleLongTimeout(() => endGiveaway(giveaway.id), delay);
   giveawayTimers.set(giveaway.id, timer);
 }
 
@@ -814,7 +863,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await saveDb();
 
         if (weeklyTimers.has(id)) {
-          clearTimeout(weeklyTimers.get(id));
+          clearScheduledTimer(weeklyTimers.get(id));
           weeklyTimers.delete(id);
         }
 
@@ -925,7 +974,7 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         if (giveawayTimers.has(giveaway.id)) {
-          clearTimeout(giveawayTimers.get(giveaway.id));
+          clearScheduledTimer(giveawayTimers.get(giveaway.id));
           giveawayTimers.delete(giveaway.id);
         }
 

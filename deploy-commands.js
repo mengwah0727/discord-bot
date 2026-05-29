@@ -7,6 +7,13 @@ import {
   ChannelType
 } from 'discord.js';
 
+const requiredEnvVars = ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID'];
+const missingEnvVars = requiredEnvVars.filter(name => !process.env[name]);
+
+if (missingEnvVars.length) {
+  throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+}
+
 const commands = [
   new SlashCommandBuilder()
     .setName('send')
