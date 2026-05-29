@@ -369,18 +369,18 @@ function teamButtonRows(teamId, closed = false) {
         .setLabel('奶媽')
         .setEmoji('💚')
         .setStyle(ButtonStyle.Success)
-        .setDisabled(closed),
+        .setDisabled(closed)
+    ),
+    new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`team_leave_${teamId}`)
         .setLabel('退出')
         .setEmoji('🚪')
         .setStyle(ButtonStyle.Secondary)
-        .setDisabled(closed)
-    ),
-    new ActionRowBuilder().addComponents(
+        .setDisabled(closed),
       new ButtonBuilder()
         .setCustomId(`team_remind_${teamId}`)
-        .setLabel('提醒隊員')
+        .setLabel('提醒')
         .setEmoji('🔔')
         .setStyle(ButtonStyle.Primary)
         .setDisabled(false),
