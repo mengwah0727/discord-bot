@@ -163,8 +163,8 @@ const commands = [
 
   // 所有人可用
   new SlashCommandBuilder()
-    .setName('team-ids')
-    .setDescription('查看当前服务器的组队消息 ID')
+    .setName('ids')
+    .setDescription('查看当前服务器的 Team、Schedule、Giveaway ID')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

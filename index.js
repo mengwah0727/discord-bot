@@ -1328,40 +1328,45 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (interaction.commandName === 'team-ids') {
-        const teams = db.data.teamPosts
-          .filter(team => team.guildId === interaction.guildId)
+      if (interaction.commandName === 'ids') {
+        const takeRecent = items => items
+          .filter(item => item.guildId === interaction.guildId)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 15);
+          .slice(0, 10);
+        const formatIds = (label, ids) => {
+          if (!ids.length) return `**${label}**\n无`;
+          return `**${label}**\n${ids.map(id => `\`${id}\``).join('\n')}`;
+        };
 
-        if (!teams.length) {
+        const teamIds = takeRecent(db.data.teamPosts).map(team => team.messageId);
+        const scheduleIds = takeRecent(db.data.scheduledMessages).map(item => item.id);
+        const weeklyIds = takeRecent(db.data.weeklySchedules).map(item => item.id);
+        const giveawayIds = takeRecent(db.data.giveaways).map(giveaway => giveaway.messageId);
+
+        const hasAnyId = [
+          teamIds,
+          scheduleIds,
+          weeklyIds,
+          giveawayIds
+        ].some(ids => ids.length);
+
+        if (!hasAnyId) {
           await interaction.reply({
-            content: '目前没有组队消息 ID。',
+            content: '目前没有可查询的 ID。',
             ephemeral: true
           });
           return;
         }
 
-        const lines = teams.map(team => {
-          normalizeTeamCollections(team);
-          const createdAt = team.createdAt
-            ? `<t:${Math.floor(new Date(team.createdAt).getTime() / 1000)}:R>`
-            : '未知时间';
-          const startText = team.startAt
-            ? `\n开始：${formatDiscordTimestamp(team.startAt, 'F')}`
-            : '';
-
-          return [
-            `**${team.title}**`,
-            `频道：<#${team.channelId}>`,
-            `人数：${team.players.length}/${team.maxPlayers} | 候补：${team.waitlist.length}`,
-            `消息 ID：\`${team.messageId}\``,
-            `创建：${createdAt}${startText}`
-          ].join('\n');
-        });
+        const lines = [
+          formatIds('Team', teamIds),
+          formatIds('Schedule', scheduleIds),
+          formatIds('Schedule Weekly', weeklyIds),
+          formatIds('Giveaway', giveawayIds)
+        ];
 
         await interaction.reply({
-          content: lines.join('\n\n-------------------\n\n').slice(0, 1900),
+          content: lines.join('\n\n').slice(0, 1900),
           ephemeral: true
         });
         return;
