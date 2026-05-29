@@ -704,7 +704,7 @@ async function sendTeamReminder(team, manual = false) {
       ? `\n開始時間：${formatDiscordTimestamp(team.startAt)} (${formatDiscordTimestamp(team.startAt, 'R')})`
       : '';
     const waitlistText = team.waitlist.length ? `\n候補人數：${team.waitlist.length}` : '';
-    const reasonText = manual ? '隊長提醒' : '自動提醒';
+    const reasonText = manual ? '上線提醒' : '自動提醒';
 
     await channel.send({
       content: `🔔 **${reasonText}：${team.title}**\n${mentions}${startText}\n目前人數：${team.players.length}/${team.maxPlayers}${waitlistText}`
