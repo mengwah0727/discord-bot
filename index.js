@@ -85,6 +85,7 @@ const scheduleTimers = new Map();
 const weeklyTimers = new Map();
 const giveawayTimers = new Map();
 const teamReminderTimers = new Map();
+const tempVoiceCleanupTimers = new Map();
 
 const dayMap = {
   sunday: 0,
@@ -814,14 +815,41 @@ async function deleteTempVoiceChannelNow(channelOrId) {
       return;
     }
 
-    if (freshChannel.members.size > 0) return;
+    const voiceStateCount = freshChannel.guild.voiceStates.cache.filter(
+      state => state.channelId === channelId
+    ).size;
+
+    if (voiceStateCount > 0) return;
 
     await freshChannel.delete('临时语音频道无人自动删除');
 
     db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
     await saveDb();
+    if (tempVoiceCleanupTimers.has(channelId)) {
+      clearTimeout(tempVoiceCleanupTimers.get(channelId));
+      tempVoiceCleanupTimers.delete(channelId);
+    }
   } catch (error) {
     console.error('删除临时语音频道失败:', error);
+  }
+}
+
+function scheduleTempVoiceCleanup(channelId, delay = 3000) {
+  if (tempVoiceCleanupTimers.has(channelId)) {
+    clearTimeout(tempVoiceCleanupTimers.get(channelId));
+  }
+
+  const timer = setTimeout(() => {
+    tempVoiceCleanupTimers.delete(channelId);
+    deleteTempVoiceChannelNow(channelId).catch(console.error);
+  }, delay);
+
+  tempVoiceCleanupTimers.set(channelId, timer);
+}
+
+async function cleanupEmptyTempVoiceChannels() {
+  for (const temp of [...db.data.tempVoiceChannels]) {
+    await deleteTempVoiceChannelNow(temp.channelId);
   }
 }
 
@@ -924,20 +952,12 @@ client.once(Events.ClientReady, async readyClient => {
     scheduleTeamReminder(team);
   }
 
-  for (const temp of db.data.tempVoiceChannels) {
-    const channel = await client.channels.fetch(temp.channelId).catch(() => null);
-
-    if (!channel || channel.type !== ChannelType.GuildVoice) {
-      db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== temp.channelId);
-      continue;
-    }
-
-    if (channel.members.size === 0) {
-      await deleteTempVoiceChannelNow(channel);
-    }
-  }
-
+  await cleanupEmptyTempVoiceChannels();
   await saveDb();
+
+  setInterval(() => {
+    cleanupEmptyTempVoiceChannels().catch(console.error);
+  }, 60 * 1000);
 });
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
@@ -958,9 +978,7 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     if (oldState.channelId) {
       const tracked = db.data.tempVoiceChannels.find(x => x.channelId === oldState.channelId);
       if (tracked) {
-        setTimeout(() => {
-          deleteTempVoiceChannelNow(oldState.channelId).catch(console.error);
-        }, 1000);
+        scheduleTempVoiceCleanup(oldState.channelId);
       }
     }
   } catch (error) {
