@@ -204,35 +204,6 @@ function sanitizeChannelName(name) {
   return cleaned || 'Temporary Room';
 }
 
-function tempVoiceControlRows(channelId) {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_rename_${channelId}`)
-        .setLabel('改名')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_limit_${channelId}`)
-        .setLabel('限人数')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_lock_${channelId}`)
-        .setLabel('锁房')
-        .setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_unlock_${channelId}`)
-        .setLabel('解锁')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_delete_${channelId}`)
-        .setLabel('删除房间')
-        .setStyle(ButtonStyle.Danger)
-    )
-  ];
-}
-
 function formatRelativeEnds(date) {
   return `<t:${Math.floor(date.getTime() / 1000)}:R> (<t:${Math.floor(date.getTime() / 1000)}:F>)`;
 }
@@ -829,51 +800,6 @@ async function deleteTempVoiceChannelNow(channel) {
   }
 }
 
-async function getTempVoiceControlContext(interaction, channelId) {
-  const tracked = db.data.tempVoiceChannels.find(x => x.channelId === channelId);
-  if (!tracked) {
-    return { error: '找不到这个临时语音房记录，可能已经被删除。' };
-  }
-
-  const channel = await client.channels.fetch(channelId).catch(() => null);
-  if (!channel || channel.type !== ChannelType.GuildVoice) {
-    db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
-    await saveDb();
-    return { error: '这个临时语音房已经不存在。' };
-  }
-
-  let isAdmin = false;
-  const guild = channel.guild;
-  const member = await guild.members.fetch(interaction.user.id).catch(() => null);
-  if (member) {
-    isAdmin = member.permissions.has(PermissionFlagsBits.ManageGuild);
-  }
-
-  if (tracked.creatorId !== interaction.user.id && !isAdmin) {
-    return { error: '只有房主或管理员可以控制这个语音房。' };
-  }
-
-  return { tracked, channel, member, isAdmin };
-}
-
-async function replyTempVoiceControl(interaction, content) {
-  await interaction.reply({
-    content,
-    ephemeral: interaction.inGuild()
-  });
-}
-
-async function sendTempVoiceControlPanel(member, channel) {
-  try {
-    await member.send({
-      content: `你的临时语音房已创建：**${channel.name}**\n使用下面按钮控制房间。`,
-      components: tempVoiceControlRows(channel.id)
-    });
-  } catch {
-    // ignore closed DMs
-  }
-}
-
 async function createTempVoiceChannelFor(member, joinChannel) {
   const guild = member.guild;
   const parentId = joinChannel.parentId || null;
@@ -893,19 +819,13 @@ async function createTempVoiceChannelFor(member, joinChannel) {
   });
   await saveDb();
 
-  let moved = true;
   await member.voice.setChannel(newChannel).catch(async error => {
-    moved = false;
     console.error('移动用户到临时语音频道失败:', error);
 
     db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== newChannel.id);
     await saveDb();
     await newChannel.delete().catch(() => {});
   });
-
-  if (moved) {
-    await sendTempVoiceControlPanel(member, newChannel);
-  }
 }
 
 client.once(Events.ClientReady, async readyClient => {
@@ -1500,48 +1420,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
       return;
     }
-
-    if (interaction.customId.startsWith('tempvoice_rename_submit_')) {
-      const channelId = interaction.customId.replace('tempvoice_rename_submit_', '');
-      const context = await getTempVoiceControlContext(interaction, channelId);
-
-      if (context.error) {
-        await replyTempVoiceControl(interaction, context.error);
-        return;
-      }
-
-      const rawName = interaction.fields.getTextInputValue('name');
-      const newName = sanitizeChannelName(rawName).slice(0, 90);
-
-      await context.channel.setName(newName, `临时语音房房主改名: ${interaction.user.tag}`);
-      await replyTempVoiceControl(interaction, `房间已改名为：**${newName}**`);
-      return;
-    }
-
-    if (interaction.customId.startsWith('tempvoice_limit_submit_')) {
-      const channelId = interaction.customId.replace('tempvoice_limit_submit_', '');
-      const context = await getTempVoiceControlContext(interaction, channelId);
-
-      if (context.error) {
-        await replyTempVoiceControl(interaction, context.error);
-        return;
-      }
-
-      const rawLimit = interaction.fields.getTextInputValue('limit').trim();
-      const limit = Number(rawLimit);
-
-      if (!Number.isInteger(limit) || limit < 0 || limit > 99) {
-        await replyTempVoiceControl(interaction, '人数限制必须是 0 到 99 的整数。0 代表不限制。');
-        return;
-      }
-
-      await context.channel.setUserLimit(limit, `临时语音房设置人数限制: ${interaction.user.tag}`);
-      await replyTempVoiceControl(
-        interaction,
-        limit === 0 ? '人数限制已取消。' : `人数限制已设置为：**${limit}**`
-      );
-      return;
-    }
   }
 
   if (interaction.isButton()) {
@@ -1585,88 +1463,6 @@ client.on(Events.InteractionCreate, async interaction => {
       });
 
       return;
-    }
-
-    if (interaction.customId.startsWith('tempvoice_')) {
-      const parts = interaction.customId.split('_');
-      const action = parts[1];
-      const channelId = parts.slice(2).join('_');
-      const context = await getTempVoiceControlContext(interaction, channelId);
-
-      if (context.error) {
-        await replyTempVoiceControl(interaction, context.error);
-        return;
-      }
-
-      if (action === 'rename') {
-        const modal = new ModalBuilder()
-          .setCustomId(`tempvoice_rename_submit_${channelId}`)
-          .setTitle('修改语音房名字');
-        const nameInput = new TextInputBuilder()
-          .setCustomId('name')
-          .setLabel('新的房间名字')
-          .setPlaceholder('例如：五排开黑')
-          .setRequired(true)
-          .setStyle(TextInputStyle.Short)
-          .setMaxLength(90);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(nameInput));
-        await interaction.showModal(modal);
-        return;
-      }
-
-      if (action === 'limit') {
-        const modal = new ModalBuilder()
-          .setCustomId(`tempvoice_limit_submit_${channelId}`)
-          .setTitle('设置人数限制');
-        const limitInput = new TextInputBuilder()
-          .setCustomId('limit')
-          .setLabel('人数限制，0 代表不限制')
-          .setPlaceholder('例如：5')
-          .setRequired(true)
-          .setStyle(TextInputStyle.Short)
-          .setMaxLength(2);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(limitInput));
-        await interaction.showModal(modal);
-        return;
-      }
-
-      if (action === 'lock') {
-        await context.channel.permissionOverwrites.edit(
-          context.channel.guild.roles.everyone,
-          { Connect: false },
-          { reason: `临时语音房锁房: ${interaction.user.tag}` }
-        );
-        await context.channel.permissionOverwrites.edit(
-          context.tracked.creatorId,
-          { Connect: true },
-          { reason: '保留房主连接权限' }
-        );
-
-        await replyTempVoiceControl(interaction, '房间已锁定，其他人不能再加入。');
-        return;
-      }
-
-      if (action === 'unlock') {
-        await context.channel.permissionOverwrites.edit(
-          context.channel.guild.roles.everyone,
-          { Connect: null },
-          { reason: `临时语音房解锁: ${interaction.user.tag}` }
-        );
-
-        await replyTempVoiceControl(interaction, '房间已解锁。');
-        return;
-      }
-
-      if (action === 'delete') {
-        await context.channel.delete(`临时语音房房主删除: ${interaction.user.tag}`);
-        db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
-        await saveDb();
-
-        await replyTempVoiceControl(interaction, '房间已删除。');
-        return;
-      }
     }
 
     if (interaction.customId.startsWith('team_role_')) {
