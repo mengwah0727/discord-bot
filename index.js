@@ -224,11 +224,7 @@ function tempVoiceControlRows(channelId) {
       new ButtonBuilder()
         .setCustomId(`tempvoice_unlock_${channelId}`)
         .setLabel('解锁')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`tempvoice_delete_${channelId}`)
-        .setLabel('删除房间')
-        .setStyle(ButtonStyle.Danger)
+        .setStyle(ButtonStyle.Secondary)
     )
   ];
 }
@@ -1659,14 +1655,6 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (action === 'delete') {
-        await context.channel.delete(`临时语音房房主删除: ${interaction.user.tag}`);
-        db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
-        await saveDb();
-
-        await replyTempVoiceControl(interaction, '房间已删除。');
-        return;
-      }
     }
 
     if (interaction.customId.startsWith('team_role_')) {
