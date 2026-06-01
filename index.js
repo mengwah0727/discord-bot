@@ -218,9 +218,7 @@ function tempVoiceControlRows(channelId) {
       new ButtonBuilder()
         .setCustomId(`tempvoice_lock_${channelId}`)
         .setLabel('锁房')
-        .setStyle(ButtonStyle.Secondary)
-    ),
-    new ActionRowBuilder().addComponents(
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`tempvoice_unlock_${channelId}`)
         .setLabel('解锁')
