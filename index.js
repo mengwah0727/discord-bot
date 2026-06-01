@@ -205,23 +205,23 @@ function sanitizeChannelName(name) {
   return cleaned || 'Temporary Room';
 }
 
-function tempVoiceControlRows(channelId, creatorId) {
+function tempVoiceControlRows(channelId) {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`tempvoice_rename_${channelId}_${creatorId}`)
+        .setCustomId(`tempvoice_rename_${channelId}`)
         .setLabel('改名')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`tempvoice_limit_${channelId}_${creatorId}`)
+        .setCustomId(`tempvoice_limit_${channelId}`)
         .setLabel('限人数')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`tempvoice_lock_${channelId}_${creatorId}`)
+        .setCustomId(`tempvoice_lock_${channelId}`)
         .setLabel('锁房')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`tempvoice_unlock_${channelId}_${creatorId}`)
+        .setCustomId(`tempvoice_unlock_${channelId}`)
         .setLabel('解锁')
         .setStyle(ButtonStyle.Secondary)
     )
@@ -851,35 +851,14 @@ async function cleanupEmptyTempVoiceChannels() {
   for (const temp of [...db.data.tempVoiceChannels]) {
     await deleteTempVoiceChannelNow(temp.channelId);
   }
-
-  for (const [guildId, config] of Object.entries(db.data.tempVoiceConfig)) {
-    const guild = client.guilds.cache.get(guildId) || await client.guilds.fetch(guildId).catch(() => null);
-    if (!guild || !config.joinChannelId) continue;
-
-    const joinChannel = await guild.channels.fetch(config.joinChannelId).catch(() => null);
-    if (!joinChannel || joinChannel.type !== ChannelType.GuildVoice) continue;
-
-    const channels = await guild.channels.fetch().catch(() => null);
-    if (!channels) continue;
-
-    for (const channel of channels.values()) {
-      if (
-        !channel ||
-        channel.type !== ChannelType.GuildVoice ||
-        channel.id === joinChannel.id ||
-        channel.parentId !== joinChannel.parentId ||
-        !channel.name.endsWith(' 的房间') ||
-        db.data.tempVoiceChannels.some(temp => temp.channelId === channel.id)
-      ) {
-        continue;
-      }
-
-      await deleteTempVoiceChannelNow(channel.id);
-    }
-  }
 }
 
-async function getTempVoiceControlContext(interaction, channelId, creatorId = null) {
+async function getTempVoiceControlContext(interaction, channelId) {
+  const tracked = db.data.tempVoiceChannels.find(x => x.channelId === channelId);
+  if (!tracked) {
+    return { error: '找不到这个临时语音房记录，可能已经被删除。' };
+  }
+
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel || channel.type !== ChannelType.GuildVoice) {
     db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
@@ -887,31 +866,11 @@ async function getTempVoiceControlContext(interaction, channelId, creatorId = nu
     return { error: '这个临时语音房已经不存在。' };
   }
 
-  let tracked = db.data.tempVoiceChannels.find(x => x.channelId === channelId);
   let isAdmin = false;
   const guild = channel.guild;
   const member = await guild.members.fetch(interaction.user.id).catch(() => null);
   if (member) {
     isAdmin = member.permissions.has(PermissionFlagsBits.ManageGuild);
-  }
-
-  if (!tracked) {
-    const isInChannel = guild.voiceStates.cache.get(interaction.user.id)?.channelId === channelId;
-    const fallbackCreatorId = creatorId || (isInChannel ? interaction.user.id : null);
-
-    if (!fallbackCreatorId && !isAdmin) {
-      return { error: '找不到这个临时语音房记录，可能是 Bot 重启后记录丢失。请重新创建临时语音房。' };
-    }
-
-    tracked = {
-      guildId: guild.id,
-      channelId,
-      creatorId: fallbackCreatorId || interaction.user.id,
-      createdAt: new Date().toISOString(),
-      restoredAt: new Date().toISOString()
-    };
-    db.data.tempVoiceChannels.push(tracked);
-    await saveDb();
   }
 
   if (tracked.creatorId !== interaction.user.id && !isAdmin) {
@@ -932,7 +891,7 @@ async function sendTempVoiceControlPanel(member, channel) {
   try {
     await member.send({
       content: `你的临时语音房已创建：**${channel.name}**\n使用下面按钮控制房间。`,
-      components: tempVoiceControlRows(channel.id, member.id)
+      components: tempVoiceControlRows(channel.id)
     });
   } catch {
     // ignore closed DMs
@@ -1556,8 +1515,8 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.customId.startsWith('tempvoice_rename_submit_')) {
-      const [, channelId, creatorId = null] = interaction.customId.match(/^tempvoice_rename_submit_(\d+)(?:_(\d+))?$/) || [];
-      const context = await getTempVoiceControlContext(interaction, channelId, creatorId);
+      const channelId = interaction.customId.replace('tempvoice_rename_submit_', '');
+      const context = await getTempVoiceControlContext(interaction, channelId);
 
       if (context.error) {
         await replyTempVoiceControl(interaction, context.error);
@@ -1573,8 +1532,8 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 
     if (interaction.customId.startsWith('tempvoice_limit_submit_')) {
-      const [, channelId, creatorId = null] = interaction.customId.match(/^tempvoice_limit_submit_(\d+)(?:_(\d+))?$/) || [];
-      const context = await getTempVoiceControlContext(interaction, channelId, creatorId);
+      const channelId = interaction.customId.replace('tempvoice_limit_submit_', '');
+      const context = await getTempVoiceControlContext(interaction, channelId);
 
       if (context.error) {
         await replyTempVoiceControl(interaction, context.error);
@@ -1644,9 +1603,8 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.customId.startsWith('tempvoice_')) {
       const parts = interaction.customId.split('_');
       const action = parts[1];
-      const channelId = parts[2];
-      const creatorId = parts[3] || null;
-      const context = await getTempVoiceControlContext(interaction, channelId, creatorId);
+      const channelId = parts.slice(2).join('_');
+      const context = await getTempVoiceControlContext(interaction, channelId);
 
       if (context.error) {
         await replyTempVoiceControl(interaction, context.error);
@@ -1655,7 +1613,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (action === 'rename') {
         const modal = new ModalBuilder()
-          .setCustomId(`tempvoice_rename_submit_${channelId}_${context.tracked.creatorId}`)
+          .setCustomId(`tempvoice_rename_submit_${channelId}`)
           .setTitle('修改语音房名字');
         const nameInput = new TextInputBuilder()
           .setCustomId('name')
@@ -1672,7 +1630,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
       if (action === 'limit') {
         const modal = new ModalBuilder()
-          .setCustomId(`tempvoice_limit_submit_${channelId}_${context.tracked.creatorId}`)
+          .setCustomId(`tempvoice_limit_submit_${channelId}`)
           .setTitle('设置人数限制');
         const limitInput = new TextInputBuilder()
           .setCustomId('limit')
@@ -1709,11 +1667,6 @@ client.on(Events.InteractionCreate, async interaction => {
           { Connect: null },
           { reason: `临时语音房解锁: ${interaction.user.tag}` }
         );
-        await context.channel.permissionOverwrites.edit(
-          context.tracked.creatorId,
-          { Connect: null },
-          { reason: '清除房主锁房保留权限' }
-        ).catch(() => {});
 
         await replyTempVoiceControl(interaction, '房间已解锁。');
         return;
