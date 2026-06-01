@@ -818,8 +818,24 @@ async function deleteTempVoiceChannelNow(channelOrId) {
     const voiceStateCount = freshChannel.guild.voiceStates.cache.filter(
       state => state.channelId === channelId
     ).size;
+    const memberCount = freshChannel.members.size;
 
-    if (voiceStateCount > 0) return;
+    if (voiceStateCount > 0 && memberCount > 0) return;
+
+    await freshChannel.permissionOverwrites.edit(
+      freshChannel.guild.roles.everyone,
+      { Connect: null },
+      { reason: '临时语音房删除前清理锁房权限' }
+    ).catch(() => {});
+
+    const tracked = db.data.tempVoiceChannels.find(x => x.channelId === channelId);
+    if (tracked?.creatorId) {
+      await freshChannel.permissionOverwrites.edit(
+        tracked.creatorId,
+        { Connect: null },
+        { reason: '临时语音房删除前清理房主权限' }
+      ).catch(() => {});
+    }
 
     await freshChannel.delete('临时语音频道无人自动删除');
 
