@@ -802,12 +802,14 @@ async function deleteTeamPost(team) {
   await saveDb();
 }
 
-async function deleteTempVoiceChannelNow(channel) {
+async function deleteTempVoiceChannelNow(channelOrId) {
+  const channelId = typeof channelOrId === 'string' ? channelOrId : channelOrId.id;
+
   try {
-    const freshChannel = await client.channels.fetch(channel.id).catch(() => null);
+    const freshChannel = await client.channels.fetch(channelId, { force: true }).catch(() => null);
 
     if (!freshChannel || freshChannel.type !== ChannelType.GuildVoice) {
-      db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channel.id);
+      db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
       await saveDb();
       return;
     }
@@ -816,7 +818,7 @@ async function deleteTempVoiceChannelNow(channel) {
 
     await freshChannel.delete('临时语音频道无人自动删除');
 
-    db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channel.id);
+    db.data.tempVoiceChannels = db.data.tempVoiceChannels.filter(x => x.channelId !== channelId);
     await saveDb();
   } catch (error) {
     console.error('删除临时语音频道失败:', error);
@@ -956,10 +958,9 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
     if (oldState.channelId) {
       const tracked = db.data.tempVoiceChannels.find(x => x.channelId === oldState.channelId);
       if (tracked) {
-        const oldChannel = oldState.channel;
-        if (oldChannel && oldChannel.members.size === 0) {
-          await deleteTempVoiceChannelNow(oldChannel);
-        }
+        setTimeout(() => {
+          deleteTempVoiceChannelNow(oldState.channelId).catch(console.error);
+        }, 1000);
       }
     }
   } catch (error) {
