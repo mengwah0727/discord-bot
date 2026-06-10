@@ -1249,7 +1249,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (interaction.commandName === 'team-create' || interaction.commandName === 'valorant-create') {
+      if (interaction.commandName === 'wwm-create' || interaction.commandName === 'valorant-create') {
         const channel = interaction.channel;
         const title = interaction.options.getString('title', true);
         const description = interaction.options.getString('description') || '';

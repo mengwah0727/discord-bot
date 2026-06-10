@@ -9,7 +9,7 @@ Discord.js bot for server announcements, scheduled messages, giveaways, team rec
 - `/schedule-weekly` creates recurring weekly announcements in GMT+8.
 - `/schedule-list` and `/schedule-delete` manage weekly announcements.
 - `/giveaway-start`, `/giveaway-end`, `/giveaway-reroll`, and `/giveaway-participants` manage button-based giveaways.
-- `/team-create` and `/team-list` manage role-based team recruitment posts with waitlists, start times, and reminders.
+- `/wwm-create`, `/valorant-create`, and `/team-list` manage role-based team recruitment posts with waitlists, start times, and reminders.
 - `/tempvoice-set` and `/tempvoice-disable` manage join-to-create temporary voice rooms.
 
 ## Railway
@@ -32,7 +32,7 @@ For persistent schedules, giveaways, team posts, and temporary voice tracking, a
 
 ## Team Posts
 
-`/team-create` supports an optional `start_time`:
+`/wwm-create` and `/valorant-create` support an optional `start_time`:
 
 ```text
 21:30

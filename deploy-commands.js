@@ -130,8 +130,8 @@ const commands = [
 
   // 所有人可用
   new SlashCommandBuilder()
-    .setName('team-create')
-    .setDescription('创建组队招募')
+    .setName('wwm-create')
+    .setDescription('创建 WWM 组队招募')
     .addStringOption(option =>
       option.setName('title').setDescription('标题，例如 CODM 组队').setRequired(true)
     )
