@@ -262,10 +262,10 @@ const TEAM_ROLE_SETS = {
   valorant: {
     roles: ['duelist', 'initiator', 'controller', 'sentinel'],
     labels: {
-      duelist: 'Duelist',
-      initiator: 'Initiator',
-      controller: 'Controller',
-      sentinel: 'Sentinel'
+      duelist: '决斗',
+      initiator: '先锋',
+      controller: '控场',
+      sentinel: '哨卫'
     },
     emojis: {
       duelist: '⚔️',
