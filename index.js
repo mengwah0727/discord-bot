@@ -402,12 +402,16 @@ function teamButtonRows(teamId, closed = false, roleSetName = 'default') {
   return [
     new ActionRowBuilder().addComponents(...roleButtons),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`team_waitlist_${teamId}`)
-        .setLabel('候補')
-        .setEmoji('📌')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(closed),
+      ...(roleSetName === 'valorant'
+        ? [
+            new ButtonBuilder()
+              .setCustomId(`team_waitlist_${teamId}`)
+              .setLabel('候補')
+              .setEmoji('📌')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(closed)
+          ]
+        : []),
       new ButtonBuilder()
         .setCustomId(`team_leave_${teamId}`)
         .setLabel('退出')
