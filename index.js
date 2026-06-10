@@ -276,7 +276,7 @@ const TEAM_ROLE_SETS = {
     },
     emojis: {
       duelist: '⚔️',
-      initiator: '⚡️',
+      initiator: '⚡',
       controller: '🌫️',
       sentinel: '🛡️',
       waitlist: '📌'
