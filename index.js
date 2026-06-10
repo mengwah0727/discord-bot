@@ -253,6 +253,33 @@ const TEAM_ROLE_EMOJIS = {
   healer: '💚'
 };
 
+const TEAM_ROLE_SETS = {
+  default: {
+    roles: ['dps', 'tank', 'healer'],
+    labels: TEAM_ROLE_LABELS,
+    emojis: TEAM_ROLE_EMOJIS
+  },
+  valorant: {
+    roles: ['duelist', 'initiator', 'controller', 'sentinel'],
+    labels: {
+      duelist: 'Duelist',
+      initiator: 'Initiator',
+      controller: 'Controller',
+      sentinel: 'Sentinel'
+    },
+    emojis: {
+      duelist: '⚔️',
+      initiator: '🧭',
+      controller: '🌫️',
+      sentinel: '🛡️'
+    }
+  }
+};
+
+function getTeamRoleSet(team) {
+  return TEAM_ROLE_SETS[team.roleSet] || TEAM_ROLE_SETS.default;
+}
+
 function normalizeTeamPlayer(player) {
   if (typeof player === 'string') {
     return { userId: player, role: 'dps' };
@@ -349,28 +376,19 @@ function normalizeTeamCollections(team) {
   team.waitlist = team.waitlist.map(normalizeTeamPlayer);
 }
 
-function teamButtonRows(teamId, closed = false) {
+function teamButtonRows(teamId, closed = false, roleSetName = 'default') {
+  const roleSet = TEAM_ROLE_SETS[roleSetName] || TEAM_ROLE_SETS.default;
+  const roleButtons = roleSet.roles.map(role =>
+    new ButtonBuilder()
+      .setCustomId(`team_role_${role}_${teamId}`)
+      .setLabel(roleSet.labels[role])
+      .setEmoji(roleSet.emojis[role])
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(closed)
+  );
+
   return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`team_role_dps_${teamId}`)
-        .setLabel('輸出')
-        .setEmoji('⚔️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(closed),
-      new ButtonBuilder()
-        .setCustomId(`team_role_tank_${teamId}`)
-        .setLabel('坦克')
-        .setEmoji('🛡️')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(closed),
-      new ButtonBuilder()
-        .setCustomId(`team_role_healer_${teamId}`)
-        .setLabel('奶媽')
-        .setEmoji('💚')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(closed)
-    ),
+    new ActionRowBuilder().addComponents(...roleButtons),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`team_leave_${teamId}`)
@@ -398,10 +416,7 @@ function buildTeamEmbed(team) {
   normalizeTeamCollections(team);
   const players = team.players;
   const waitlist = team.waitlist;
-
-  const dpsPlayers = players.filter(p => p.role === 'dps');
-  const tankPlayers = players.filter(p => p.role === 'tank');
-  const healerPlayers = players.filter(p => p.role === 'healer');
+  const roleSet = getTeamRoleSet(team);
 
   const lines = [
     `**人數：** ${players.length}/${team.maxPlayers}`,
@@ -424,41 +439,26 @@ function buildTeamEmbed(team) {
   lines.push('**參與名單：**');
   lines.push('');
 
-  lines.push('⚔️ **輸出**');
-  if (dpsPlayers.length) {
-    dpsPlayers.forEach((player, index) => {
-      lines.push(`${index + 1}. <@${player.userId}>`);
-    });
-  } else {
-    lines.push('目前沒有人');
-  }
+  roleSet.roles.forEach((role, roleIndex) => {
+    const rolePlayers = players.filter(p => p.role === role);
+    if (roleIndex > 0) lines.push('');
 
-  lines.push('');
-  lines.push('🛡️ **坦克**');
-  if (tankPlayers.length) {
-    tankPlayers.forEach((player, index) => {
-      lines.push(`${index + 1}. <@${player.userId}>`);
-    });
-  } else {
-    lines.push('目前沒有人');
-  }
-
-  lines.push('');
-  lines.push('💚 **奶媽**');
-  if (healerPlayers.length) {
-    healerPlayers.forEach((player, index) => {
-      lines.push(`${index + 1}. <@${player.userId}>`);
-    });
-  } else {
-    lines.push('目前沒有人');
-  }
+    lines.push(`${roleSet.emojis[role]} **${roleSet.labels[role]}**`);
+    if (rolePlayers.length) {
+      rolePlayers.forEach((player, index) => {
+        lines.push(`${index + 1}. <@${player.userId}>`);
+      });
+    } else {
+      lines.push('目前沒有人');
+    }
+  });
 
   lines.push('');
   lines.push('📌 **候補**');
   if (waitlist.length) {
     waitlist.forEach((player, index) => {
-      const emoji = TEAM_ROLE_EMOJIS[player.role] || '✅';
-      const label = TEAM_ROLE_LABELS[player.role] || '隊員';
+      const emoji = roleSet.emojis[player.role] || '✅';
+      const label = roleSet.labels[player.role] || '隊員';
       lines.push(`${index + 1}. ${emoji} ${label} - <@${player.userId}>`);
     });
   } else {
@@ -680,7 +680,7 @@ async function refreshTeamMessage(team) {
     const message = await channel.messages.fetch(team.messageId);
     await message.edit({
       embeds: [buildTeamEmbed(team)],
-      components: teamButtonRows(team.id, team.closed)
+      components: teamButtonRows(team.id, team.closed, team.roleSet)
     });
   } catch (error) {
     console.error('更新组队消息失败:', error);
@@ -1227,11 +1227,12 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (interaction.commandName === 'team-create') {
+      if (interaction.commandName === 'team-create' || interaction.commandName === 'valorant-create') {
         const channel = interaction.channel;
         const title = interaction.options.getString('title', true);
         const description = interaction.options.getString('description') || '';
-        const maxPlayers = interaction.options.getInteger('max_players', true);
+        const isValorantTeam = interaction.commandName === 'valorant-create';
+        const maxPlayers = isValorantTeam ? 5 : interaction.options.getInteger('max_players', true);
         const startTimeText = interaction.options.getString('start_time') || '';
 
         if (!channel.isTextBased()) {
@@ -1259,6 +1260,7 @@ client.on(Events.InteractionCreate, async interaction => {
           title,
           description,
           maxPlayers,
+          roleSet: isValorantTeam ? 'valorant' : 'default',
           players: [],
           waitlist: [],
           closed: false,
@@ -1270,7 +1272,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
         const sentMessage = await channel.send({
           embeds: [buildTeamEmbed(team)],
-          components: teamButtonRows(team.id, false)
+          components: teamButtonRows(team.id, false, team.roleSet)
         });
 
         team.messageId = sentMessage.id;
@@ -1300,6 +1302,7 @@ client.on(Events.InteractionCreate, async interaction => {
         normalizeTeamCollections(team);
         const players = team.players;
         const waitlist = team.waitlist;
+        const roleSet = getTeamRoleSet(team);
 
         if (!players.length && !waitlist.length) {
           await interaction.reply({
@@ -1310,13 +1313,13 @@ client.on(Events.InteractionCreate, async interaction => {
         }
 
         const lines = players.map((player, index) => {
-          const emoji = TEAM_ROLE_EMOJIS[player.role] || '✅';
-          const label = TEAM_ROLE_LABELS[player.role] || '隊員';
+          const emoji = roleSet.emojis[player.role] || '✅';
+          const label = roleSet.labels[player.role] || '隊員';
           return `${index + 1}. ${emoji} ${label} - <@${player.userId}>`;
         });
         const waitlistLines = waitlist.map((player, index) => {
-          const emoji = TEAM_ROLE_EMOJIS[player.role] || '✅';
-          const label = TEAM_ROLE_LABELS[player.role] || '隊員';
+          const emoji = roleSet.emojis[player.role] || '✅';
+          const label = roleSet.labels[player.role] || '隊員';
           return `${index + 1}. ${emoji} ${label} - <@${player.userId}>`;
         });
         const startText = team.startAt ? `\n開始時間：${formatDiscordTimestamp(team.startAt)}` : '';
@@ -1487,9 +1490,10 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
 
-      if (!TEAM_ROLE_LABELS[role]) {
+      const roleSet = getTeamRoleSet(team);
+      if (!roleSet.labels[role]) {
         await interaction.reply({
-          content: '職業選擇錯誤。',
+          content: '定位選擇錯誤。',
           ephemeral: true
         });
         return;
@@ -1514,7 +1518,7 @@ client.on(Events.InteractionCreate, async interaction => {
         await refreshTeamMessage(team);
 
         await interaction.reply({
-          content: `人數已滿，你已加入候補，想玩的職業是 ${TEAM_ROLE_EMOJIS[role]} **${TEAM_ROLE_LABELS[role]}**。`,
+          content: `人數已滿，你已加入候補，想玩的定位是 ${roleSet.emojis[role]} **${roleSet.labels[role]}**。`,
           ephemeral: true
         });
         return;
@@ -1534,7 +1538,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await refreshTeamMessage(team);
 
       await interaction.reply({
-        content: `你已選擇 ${TEAM_ROLE_EMOJIS[role]} **${TEAM_ROLE_LABELS[role]}**。`,
+        content: `你已選擇 ${roleSet.emojis[role]} **${roleSet.labels[role]}**。`,
         ephemeral: true
       });
 

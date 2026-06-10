@@ -155,6 +155,23 @@ const commands = [
 
   // 所有人可用
   new SlashCommandBuilder()
+    .setName('valorant-create')
+    .setDescription('创建 Valorant 五排组队')
+    .addStringOption(option =>
+      option.setName('title').setDescription('标题，例如 Valorant 五排').setRequired(true)
+    )
+    .addStringOption(option =>
+      option
+        .setName('start_time')
+        .setDescription('开始时间，例如 21:30、05-29 21:30、2026-05-29 21:30')
+        .setRequired(false)
+    )
+    .addStringOption(option =>
+      option.setName('description').setDescription('说明 / 段位 / 规则').setRequired(false)
+    ),
+
+  // 所有人可用
+  new SlashCommandBuilder()
     .setName('team-list')
     .setDescription('查看组队参与名单')
     .addStringOption(option =>
