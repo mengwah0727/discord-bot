@@ -256,8 +256,14 @@ const TEAM_ROLE_EMOJIS = {
 const TEAM_ROLE_SETS = {
   default: {
     roles: ['dps', 'tank', 'healer'],
-    labels: TEAM_ROLE_LABELS,
-    emojis: TEAM_ROLE_EMOJIS
+    labels: {
+      ...TEAM_ROLE_LABELS,
+      waitlist: '候補'
+    },
+    emojis: {
+      ...TEAM_ROLE_EMOJIS,
+      waitlist: '📌'
+    }
   },
   valorant: {
     roles: ['duelist', 'initiator', 'controller', 'sentinel'],
@@ -265,19 +271,25 @@ const TEAM_ROLE_SETS = {
       duelist: '决斗',
       initiator: '先锋',
       controller: '控场',
-      sentinel: '哨卫'
+      sentinel: '哨卫',
+      waitlist: '候補'
     },
     emojis: {
       duelist: '⚔️',
-      initiator: '🧭',
+      initiator: '⚡️',
       controller: '🌫️',
-      sentinel: '🛡️'
+      sentinel: '🛡️',
+      waitlist: '📌'
     }
   }
 };
 
 function getTeamRoleSet(team) {
   return TEAM_ROLE_SETS[team.roleSet] || TEAM_ROLE_SETS.default;
+}
+
+function getFallbackTeamRole(team) {
+  return getTeamRoleSet(team).roles[0];
 }
 
 function normalizeTeamPlayer(player) {
@@ -390,6 +402,12 @@ function teamButtonRows(teamId, closed = false, roleSetName = 'default') {
   return [
     new ActionRowBuilder().addComponents(...roleButtons),
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`team_waitlist_${teamId}`)
+        .setLabel('候補')
+        .setEmoji('📌')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(closed),
       new ButtonBuilder()
         .setCustomId(`team_leave_${teamId}`)
         .setLabel('退出')
@@ -750,6 +768,10 @@ function promoteWaitlistIfPossible(team) {
   while (team.players.length < team.maxPlayers && team.waitlist.length) {
     const next = team.waitlist.shift();
     if (team.players.some(player => player.userId === next.userId)) continue;
+
+    if (!getTeamRoleSet(team).roles.includes(next.role)) {
+      next.role = getFallbackTeamRole(team);
+    }
 
     team.players.push(next);
     promoted.push(next);
@@ -1462,6 +1484,57 @@ client.on(Events.InteractionCreate, async interaction => {
 
       await interaction.reply({
         content: '你已经成功参加抽奖。',
+        ephemeral: true
+      });
+
+      return;
+    }
+
+    if (interaction.customId.startsWith('team_waitlist_')) {
+      const teamId = interaction.customId.replace('team_waitlist_', '');
+      const team = db.data.teamPosts.find(t => t.id === teamId);
+
+      if (!team) {
+        await interaction.reply({
+          content: '找不到這個組隊消息。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      if (team.closed) {
+        await interaction.reply({
+          content: '這個組隊報名已經關閉。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      normalizeTeamCollections(team);
+
+      const existingPlayer = team.players.find(player => player.userId === interaction.user.id);
+      const existingWaitlistPlayer = team.waitlist.find(player => player.userId === interaction.user.id);
+
+      if (existingWaitlistPlayer && !existingPlayer) {
+        await interaction.reply({
+          content: '你已經在候補名單裡。',
+          ephemeral: true
+        });
+        return;
+      }
+
+      team.players = team.players.filter(player => player.userId !== interaction.user.id);
+      team.waitlist = team.waitlist.filter(player => player.userId !== interaction.user.id);
+      team.waitlist.push({
+        userId: interaction.user.id,
+        role: 'waitlist'
+      });
+
+      await saveDb();
+      await refreshTeamMessage(team);
+
+      await interaction.reply({
+        content: existingPlayer ? '你已移到候補名單。' : '你已加入候補名單。',
         ephemeral: true
       });
 
