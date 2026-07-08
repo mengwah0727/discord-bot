@@ -11,6 +11,8 @@ Discord.js bot for server announcements, scheduled messages, giveaways, team rec
 - `/giveaway-start`, `/giveaway-end`, `/giveaway-reroll`, and `/giveaway-participants` manage button-based giveaways.
 - `/wwm-create`, `/valorant-create`, and `/team-list` manage role-based team recruitment posts with waitlists, start times, and reminders.
 - `/tempvoice-set` and `/tempvoice-disable` manage join-to-create temporary voice rooms.
+- `/play` accepts a song name, YouTube link, Spotify track, or Spotify playlist.
+- `/music` opens the current music control panel.
 
 ## Railway
 
@@ -26,9 +28,18 @@ Set these Railway variables:
 DISCORD_TOKEN=...
 DISCORD_CLIENT_ID=...
 DATA_DIR=/data
+YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 ```
 
 For persistent schedules, giveaways, team posts, and temporary voice tracking, attach a Railway volume and mount it at `/data`. Without a volume, Railway restarts can reset `db.json`.
+
+## Music
+
+Join a voice channel and use `/play`. Everyone in the same voice channel can control previous, pause, skip, stop, shuffle, loop, queue, and volume from the panel. Spotify playlists are limited to 50 tracks, and music queues are cleared whenever the bot restarts.
+
+Spotify links provide song information and are matched to a playable YouTube source. YouTube extraction is unofficial and can occasionally be blocked on hosting-provider IPs. If Railway is challenged, set `YOUTUBE_COOKIE` to a valid cookie header and treat it as a secret. Never commit that value.
+
+Music playback uses more CPU and network traffic than the bot's text features. FFmpeg is bundled through `ffmpeg-static`; `YOUTUBE_DL_SKIP_PYTHON_CHECK=1` lets Railway install the YouTube helper without requiring a separate Python runtime check.
 
 ## Team Posts
 
