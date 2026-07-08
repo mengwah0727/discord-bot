@@ -64,7 +64,7 @@ Music behavior lives in a dedicated module rather than expanding the existing co
 
 The existing entry point only initializes the module and routes `/play`, `/music`, and music component interactions to it. Command registration remains in the existing deployment script.
 
-The implementation uses Discord Player and its maintained extractors, with FFmpeg available in the Railway runtime. Exact package versions are pinned by the lockfile.
+The implementation uses Discord Player v7, its official Spotify metadata extractor, and the community-listed `discord-player-youtubei` extractor for YouTube search and playback. Discord Player v7 no longer ships an official YouTube extractor, so YouTube support is treated as a replaceable adapter and playback failures return a clear user-facing error. FFmpeg is available in the Railway runtime, and exact package versions are pinned by the lockfile.
 
 ## Data And Persistence
 
