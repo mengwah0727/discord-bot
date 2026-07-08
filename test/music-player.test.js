@@ -25,6 +25,19 @@ test('registers diagnostics for tracks skipped before playback', async () => {
   assert.ok(playerEventNames.includes('debug'));
 });
 
+test('YouTube extractor uses the playerless Android client on Railway', async () => {
+  const registrations = [];
+  const player = makePlayer();
+  player.extractors = {
+    register: async (_extractor, options) => registrations.push(options)
+  };
+
+  await createMusicService({}, { player, loadExtractors: true });
+
+  assert.equal(registrations[0].disablePlayer, true);
+  assert.equal(registrations[0].streamOptions.useClient, 'ANDROID');
+});
+
 test('non-music commands are ignored', async () => {
   const service = await createMusicService({}, { player: makePlayer(), loadExtractors: false });
   const handled = await service.handleCommand({ commandName: 'wwm-create' });

@@ -59,7 +59,9 @@ export async function createMusicService(client, options = {}) {
     await player.extractors.register(YoutubeiExtractor, {
       cookie: process.env.YOUTUBE_COOKIE || undefined,
       ignoreSignInErrors: true,
-      logLevel: 'ALL'
+      logLevel: 'ALL',
+      disablePlayer: true,
+      streamOptions: { useClient: 'ANDROID' }
     });
     await player.extractors.register(SpotifyExtractor, {});
   }
