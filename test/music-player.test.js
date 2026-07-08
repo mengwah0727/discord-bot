@@ -11,6 +11,16 @@ function makePlayer() {
   };
 }
 
+test('registers diagnostics for tracks skipped before playback', async () => {
+  const eventNames = [];
+  const player = makePlayer();
+  player.events.on = name => eventNames.push(name);
+
+  await createMusicService({}, { player, loadExtractors: false });
+
+  assert.ok(eventNames.includes('playerSkip'));
+});
+
 test('non-music commands are ignored', async () => {
   const service = await createMusicService({}, { player: makePlayer(), loadExtractors: false });
   const handled = await service.handleCommand({ commandName: 'wwm-create' });

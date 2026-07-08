@@ -71,6 +71,24 @@ export async function createMusicService(client, options = {}) {
     await queue.metadata?.channel?.send('当前歌曲无法播放，正在尝试下一首。').catch(() => {});
   });
 
+  player.events.on('playerSkip', async (queue, track, reason, description) => {
+    console.error('歌曲被跳过:', {
+      title: track?.title,
+      reason,
+      description
+    });
+
+    const metadata = queue.metadata || {};
+    if (metadata.skipNoticeSent || !metadata.channel) return;
+    metadata.skipNoticeSent = true;
+    queue.setMetadata(metadata);
+
+    const detail = String(description || reason || '无法取得音频来源').slice(0, 500);
+    await metadata.channel.send(
+      `歌曲无法播放，已自动跳过。\n原因：\`${detail.replaceAll('`', "'")}\``
+    ).catch(() => {});
+  });
+
   player.events.on('error', (queue, error) => {
     console.error('音乐队列错误:', error);
   });
