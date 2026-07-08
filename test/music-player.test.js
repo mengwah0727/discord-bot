@@ -13,12 +13,16 @@ function makePlayer() {
 
 test('registers diagnostics for tracks skipped before playback', async () => {
   const eventNames = [];
+  const playerEventNames = [];
   const player = makePlayer();
   player.events.on = name => eventNames.push(name);
+  player.on = name => playerEventNames.push(name);
 
   await createMusicService({}, { player, loadExtractors: false });
 
   assert.ok(eventNames.includes('playerSkip'));
+  assert.ok(eventNames.includes('debug'));
+  assert.ok(playerEventNames.includes('debug'));
 });
 
 test('non-music commands are ignored', async () => {

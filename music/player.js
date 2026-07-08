@@ -57,7 +57,8 @@ export async function createMusicService(client, options = {}) {
   if (options.loadExtractors !== false) {
     await player.extractors.register(YoutubeiExtractor, {
       cookie: process.env.YOUTUBE_COOKIE || undefined,
-      ignoreSignInErrors: true
+      ignoreSignInErrors: true,
+      logLevel: 'ALL'
     });
     await player.extractors.register(SpotifyExtractor, {});
   }
@@ -69,6 +70,14 @@ export async function createMusicService(client, options = {}) {
   player.events.on('playerError', async (queue, error) => {
     console.error('音乐串流失败:', error);
     await queue.metadata?.channel?.send('当前歌曲无法播放，正在尝试下一首。').catch(() => {});
+  });
+
+  player.on('debug', message => {
+    console.log('[Music/Player]', message);
+  });
+
+  player.events.on('debug', (queue, message) => {
+    console.log(`[Music/Queue:${queue.id}]`, message);
   });
 
   player.events.on('playerSkip', async (queue, track, reason, description) => {
