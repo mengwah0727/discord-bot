@@ -19,6 +19,7 @@ import {
   TextInputBuilder,
   TextInputStyle
 } from 'discord.js';
+import { createMusicService } from './music/player.js';
 
 const APPLE_GREEN = '#34C759';
 const UTC_PLUS_8_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -80,6 +81,8 @@ const client = new Client({
   ],
   partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
+
+const music = await createMusicService(client);
 
 const scheduleTimers = new Map();
 const weeklyTimers = new Map();
@@ -921,6 +924,8 @@ client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
 
 client.on(Events.InteractionCreate, async interaction => {
   if (interaction.isChatInputCommand()) {
+    if (await music.handleCommand(interaction)) return;
+
     const needsAdmin = ADMIN_ONLY_COMMANDS.has(interaction.commandName);
     const hasPermission = interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 
@@ -1452,6 +1457,8 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   if (interaction.isButton()) {
+    if (await music.handleButton(interaction)) return;
+
     if (interaction.customId.startsWith('giveaway_join_')) {
       const giveawayId = interaction.customId.replace('giveaway_join_', '');
       const giveaway = db.data.giveaways.find(g => g.id === giveawayId);

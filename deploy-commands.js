@@ -6,6 +6,7 @@ import {
   PermissionFlagsBits,
   ChannelType
 } from 'discord.js';
+import { musicCommands } from './music/commands.js';
 
 const requiredEnvVars = ['DISCORD_TOKEN', 'DISCORD_CLIENT_ID'];
 const missingEnvVars = requiredEnvVars.filter(name => !process.env[name]);
@@ -176,7 +177,9 @@ const commands = [
     .setDescription('查看组队参与名单')
     .addStringOption(option =>
       option.setName('message_id').setDescription('组队消息 ID').setRequired(true)
-    )
+    ),
+
+  ...musicCommands
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
