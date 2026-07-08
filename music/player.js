@@ -2,8 +2,9 @@ import { Player } from 'discord-player';
 import { SpotifyExtractor } from '@discord-player/extractor';
 import { YoutubeiExtractor } from 'discord-player-youtubei';
 import ffmpegPath from 'ffmpeg-static';
-import { authorizeVoiceControl, limitTracks, nextLoopMode, stepVolume } from './policy.js';
+import { authorizeVoiceControl, nextLoopMode, stepVolume } from './policy.js';
 import { buildMusicPanel, buildQueueEmbed } from './panel.js';
+import { resolveLinkResult } from './resolver.js';
 
 const MUSIC_COMMANDS = new Set(['play', 'music']);
 
@@ -130,7 +131,11 @@ export async function createMusicService(client, options = {}) {
     try {
       const result = await player.play(channel, query, {
         requestedBy: interaction.user,
-        afterSearch: async searchResult => searchResult.setTracks(limitTracks(searchResult.tracks)),
+        afterSearch: async searchResult => resolveLinkResult({
+          input: query,
+          result: searchResult,
+          search: searchText => player.search(searchText, { requestedBy: interaction.user })
+        }),
         nodeOptions: {
           metadata: { channel: interaction.channel, panelMessageId: null },
           leaveOnEnd: true,
