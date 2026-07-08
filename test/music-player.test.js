@@ -25,7 +25,7 @@ test('registers diagnostics for tracks skipped before playback', async () => {
   assert.ok(playerEventNames.includes('debug'));
 });
 
-test('YouTube extractor uses the playerless Android client on Railway', async () => {
+test('YouTube extractor uses the explicit yt-dlp stream on Railway', async () => {
   const registrations = [];
   const player = makePlayer();
   player.extractors = {
@@ -34,8 +34,8 @@ test('YouTube extractor uses the playerless Android client on Railway', async ()
 
   await createMusicService({}, { player, loadExtractors: true });
 
-  assert.equal(registrations[0].disablePlayer, true);
-  assert.equal(registrations[0].streamOptions.useClient, 'ANDROID');
+  assert.equal(typeof registrations[0].createStream, 'function');
+  assert.equal(registrations[0].disablePlayer, undefined);
 });
 
 test('non-music commands are ignored', async () => {

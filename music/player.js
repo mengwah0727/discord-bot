@@ -5,6 +5,7 @@ import ffmpegPath from 'ffmpeg-static';
 import { authorizeVoiceControl, nextLoopMode, stepVolume } from './policy.js';
 import { buildMusicPanel, buildQueueEmbed } from './panel.js';
 import { resolveLinkResult } from './resolver.js';
+import { createYoutubeDlStream } from './youtube-stream.js';
 
 const MUSIC_COMMANDS = new Set(['play', 'music']);
 
@@ -60,8 +61,7 @@ export async function createMusicService(client, options = {}) {
       cookie: process.env.YOUTUBE_COOKIE || undefined,
       ignoreSignInErrors: true,
       logLevel: 'ALL',
-      disablePlayer: true,
-      streamOptions: { useClient: 'ANDROID' }
+      createStream: createYoutubeDlStream
     });
     await player.extractors.register(SpotifyExtractor, {});
   }
